@@ -1,0 +1,22 @@
+
+# Gizli bilgiler
+.env
+.env.*
+.streamlit/secrets.toml
+**/secrets.toml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Yerel veritabanları
+*.db
+*.sqlite
+*.sqlite3
+
+# Gereksiz dosyalar
+*.log
+.idea/
+.vscode/
