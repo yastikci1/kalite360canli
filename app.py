@@ -1,7 +1,7 @@
 import streamlit as st
 from db import init_db, authenticate
 
-st.set_page_config(page_title="Kalite360 Fabrika", page_icon="🏭", layout="wide")
+st.set_page_config(page_title="Kalite360 Fabrika", page_icon="K", layout="wide")
 
 init_db()
 
@@ -10,12 +10,12 @@ if st.session_state.get("pending_page"): st.session_state["page_nav"] = st.sessi
 if "page_nav" not in st.session_state: st.session_state["page_nav"] = "Dashboard"
 
 MENU_ICONS = {
-    "Dashboard": "📊  Dashboard", 
-    "Şikâyet Listesi": "📋  Şikâyet Listesi", 
-    "Yeni Şikâyet": "➕  Yeni Şikâyet", 
-    "Şikâyet Detayı": "🔍  Şikâyet Detayı", 
-    "Veri Aktarımı": "📥  Veri Aktarımı", 
-    "Yönetim": "⚙️  Yönetim"
+    "Dashboard": "Dashboard", 
+    "Şikâyet Listesi": "Şikâyet Listesi", 
+    "Yeni Şikâyet": "Yeni Şikâyet", 
+    "Şikâyet Detayı": "Şikâyet Detayı", 
+    "Veri Aktarımı": "Veri Aktarımı", 
+    "Yönetim": "Yönetim"
 }
 
 if st.session_state.get("page_nav") not in MENU_ICONS:
@@ -188,7 +188,7 @@ st.markdown("""<style>
 </style>""", unsafe_allow_html=True)
 
 def login():
-    st.title("🏭 Kalite360 | Fabrika Şikâyet Yönetimi")
+    st.title("Kalite360 | Fabrika Şikâyet Yönetimi")
     with st.form("login"):
         username = st.text_input("Kullanıcı adı")
         password = st.text_input("Parola", type="password")
@@ -232,7 +232,7 @@ st.sidebar.markdown(f"""
     </div>
 </div>
 <div class="sidebar-user-card">
-    <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-bottom: 3px;">🏭 Kalite360</div>
+    <div style="font-size: 1.02rem; font-weight: 800; color: #0f172a; margin-bottom: 3px;"> Kalite360</div>
     <div style="font-size: 0.84rem; color: #1e293b; font-weight: 600;">{user["full_name"]} <span style="color:#0284c7; font-weight: 700;">• {user["role"]}</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -253,11 +253,12 @@ for menu_key, menu_label in MENU_ICONS.items():
 page = st.session_state["page_nav"]
 
 st.sidebar.markdown('<div class="sidebar-bottom-divider"></div>', unsafe_allow_html=True)
-if st.sidebar.button("🚪 Çıkış yap", key="btn_logout_sidebar", use_container_width=True):
+if st.sidebar.button("Çıkış yap", key="btn_logout_sidebar", use_container_width=True):
     st.session_state.user = None
     st.rerun()
 
-st.title(page)
+if page != "Şikâyet Detayı":
+    st.title(page)
 
 # --- ROUTER (YÖNLENDİRİCİ) ---
 if page == "Dashboard":

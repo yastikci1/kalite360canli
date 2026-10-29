@@ -1,4 +1,5 @@
 import io, os, re, sys, subprocess
+from html import escape
 from datetime import date
 import streamlit as st
 import pandas as pd
@@ -413,23 +414,104 @@ def build_fr66_pdf(form_data: dict) -> bytes:
     doc.build(elements)
     return buf.getvalue()
 
+DETAIL_CSS = """
+<style>
+.block-container:has(.k360-detail-marker) { padding-top: 2.5rem; padding-bottom: 3rem; }
+.k360-detail-marker { display: none; }
+.k360-eyebrow { color: #64748b; font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .55rem; }
+.k360-hero { border: 1px solid rgba(100,116,139,.22); border-top: 3px solid #0284c7; border-radius: 16px; padding: 26px 28px; background: rgba(14,165,233,.035); margin-bottom: 18px; }
+.k360-hero h1 { font-size: 1.85rem; letter-spacing: -.04em; line-height: 1.2; margin: 0; padding: 0; color: inherit; }
+.k360-hero-product { font-size: 1.05rem; font-weight: 600; margin-top: 12px; overflow-wrap: anywhere; }
+.k360-hero-manufacturer { color: #64748b; font-size: .85rem; margin-top: 5px; overflow-wrap: anywhere; }
+.k360-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
+.k360-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(100,116,139,.22); border-radius: 7px; padding: 5px 10px; font-size: .78rem; font-weight: 600; background: rgba(100,116,139,.07); }
+.k360-badge.status-closed { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+.k360-badge.status-open { background: #eff6ff; color: #1e40af; border-color: #bfdbfe; }
+.k360-badge.priority-high { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+.k360-badge.priority-critical { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+.k360-card { border: 1px solid rgba(100,116,139,.22); border-radius: 13px; padding: 22px 24px; margin: 4px 0 18px; background: rgba(100,116,139,.025); min-width: 0; }
+.k360-card h3 { font-size: 1rem; font-weight: 650; letter-spacing: -.015em; padding: 0; margin: 0 0 17px; color: inherit; }
+.k360-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 24px; margin: 0; }
+.k360-field { min-width: 0; }
+.k360-field dt { color: #64748b; font-size: .76rem; font-weight: 500; margin-bottom: 6px; }
+.k360-field dd { margin: 0; font-size: .9rem; font-weight: 550; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
+.k360-field.wide { grid-column: 1 / -1; }
+.k360-score-line { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin: 20px 0 8px; }
+.k360-score-line span { font-size: .78rem; color: #64748b; }
+.k360-score-line strong { font-size: 1.15rem; }
+.k360-score-track { height: 5px; border-radius: 5px; background: rgba(100,116,139,.15); overflow: hidden; }
+.k360-score-fill { height: 100%; background: #0284c7; border-radius: inherit; }
+.k360-note { color: #64748b; font-size: .79rem; line-height: 1.65; margin-top: 10px; overflow-wrap: anywhere; }
+.k360-narrative { border-left: 3px solid #0284c7; }
+.k360-narrative.solution { border-left-color: #0d9488; }
+.k360-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; font-size: .9rem; }
+.k360-summary { display: grid; grid-template-columns: minmax(180px, 1fr) 3fr; gap: 28px; }
+.k360-summary-count { font-size: 2.4rem; font-weight: 750; letter-spacing: -.05em; line-height: 1.25; }
+.k360-summary ul { padding-left: 18px; margin: 0; line-height: 1.8; font-size: .88rem; }
+.k360-summary li + li { margin-top: 10px; }
+.k360-profile { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .85rem; padding: 14px 18px; border: 1px solid rgba(100,116,139,.22); border-radius: 10px; margin-bottom: 18px; }
+.block-container:has(.k360-detail-marker) [data-baseweb="tab-list"] { gap: 20px; border-bottom: 1px solid rgba(100,116,139,.2); margin-bottom: 18px; }
+.block-container:has(.k360-detail-marker) [data-baseweb="tab"] { padding: 12px 0; background: transparent; white-space: nowrap; font-size: .84rem; }
+.block-container:has(.k360-detail-marker) [data-baseweb="tab"][aria-selected="true"] { color: #0284c7; }
+.block-container:has(.k360-detail-marker) [data-baseweb="tab-highlight"] { background: #0284c7; height: 3px; }
+.block-container:has(.k360-detail-marker) [role="tab"][aria-selected="true"] { color: #0284c7 !important; }
+.block-container:has(.k360-detail-marker) .react-aria-SelectionIndicator { background: #0284c7 !important; }
+.block-container:has(.k360-detail-marker) button[kind="primary"] { background: #0369a1; border-color: #0369a1; color: white; border-radius: 8px; }
+.block-container:has(.k360-detail-marker) button[kind="primary"]:hover { background: #075985; border-color: #075985; }
+.block-container:has(.k360-detail-marker) [data-testid="stForm"] { border-radius: 12px; }
+.block-container:has(.k360-detail-marker) [data-testid="stRadio"] [role="radiogroup"] { flex-wrap: wrap; gap: 12px; }
+.block-container:has(.k360-detail-marker) [data-testid="stRadio"] [role="radiogroup"] > label { border: 1px solid rgba(100,116,139,.22); border-radius: 10px; padding: 14px; flex: 1 1 220px; align-items: flex-start; }
+.block-container:has(.k360-detail-marker) [data-testid="stRadio"] [role="radiogroup"] > label:has(input:checked) { border-color: #0284c7; background: rgba(14,165,233,.06); }
+@media (max-width: 760px) {
+ .k360-hero { padding: 22px 18px; }
+ .k360-hero h1 { font-size: 1.6rem; }
+ .k360-card { padding: 20px 18px; }
+ .k360-fields, .k360-summary { grid-template-columns: 1fr; }
+ .block-container:has(.k360-detail-marker) { padding-top: 1.5rem; }
+}
+</style>
+"""
+
+
+def _detail_value(value):
+    """Escape record values before inserting them in presentation HTML."""
+    return escape(str(value if value is not None and str(value).strip() else "Belirtilmemiş"))
+
+
+def _detail_fields(title, fields):
+    rows = "".join(
+        f'<div class="k360-field{ " wide" if wide else "" }"><dt>{escape(label)}</dt>'
+        f'<dd>{_detail_value(value)}</dd></div>'
+        for label, value, wide in fields
+    )
+    return f'<section class="k360-card"><h3>{escape(title)}</h3><dl class="k360-fields">{rows}</dl></section>'
+
+
+def _detail_text(title, text, solution=False):
+    variant = " solution" if solution else ""
+    st.markdown(
+        f'<section class="k360-card k360-narrative{variant}"><h3>{escape(title)}</h3>'
+        f'<div class="k360-text">{_detail_value(text)}</div></section>',
+        unsafe_allow_html=True,
+    )
+
+
 def render(user):
+    st.markdown(DETAIL_CSS, unsafe_allow_html=True)
+    st.markdown('<span class="k360-detail-marker"></span>', unsafe_allow_html=True)
     cid = st.session_state.get("detail_id")
     d = get_complaint(cid) if cid else None
     if not d:
+        st.title("Şikâyet Detayı", anchor=False)
         st.info("Şikâyet Listesi ekranından bir kayıt seçip detayını açabilirsiniz.")
         return
 
     mark_email_complaint_viewed(cid)
     if int(cid) in email_complaint_states():
-        st.success("📩 Gmail üzerinden gelen şikâyet · Detay ekranı açıldı")
+        st.success("Gmail üzerinden gelen şikâyet · Detay ekranı açıldı")
 
     s_score, p_rank, auto_prio, p_reason = sync_complaint_priority(d)
 
-    st.subheader(f"{d['complaint_no']} · {d['product']}")
-    st.write(f"**Durum:** {d['status']} | **Öncelik:** {auto_prio} | **Sorumlu:** {d['owner']}")
-
-    t1, t2, t3, t4, t5, t6 = st.tabs(["Genel Bilgiler", "⚖️ Doğruluk Analizi", "İletişim Takibi", "İşlem Geçmişi", "📊 Tarihçe & Benzerlik Analitiği", "📄 Raporlama (FR-66)"])
 
     raw_desc = str(d.get("description") or "FDA vaka metni belirtilmemiş.")
     raw_plan = str(d.get("action_plan") or "Üretici inceleme/servis raporu henüz girilmemiş.")
@@ -467,6 +549,23 @@ def render(user):
             same_cause_df = past_data[past_data["Hata_Nedeni"] == curr_cause]
             exact_match_df = past_data[(past_data["Model_Kodu"] == curr_model) & (past_data["Hata_Nedeni"] == curr_cause)]
 
+    status_class = "status-closed" if d.get("status") == "Kapalı" else "status-open"
+    priority_class = {"Kritik": "priority-critical", "Yüksek": "priority-high"}.get(auto_prio, "")
+    st.markdown(
+        f'<section class="k360-hero"><div class="k360-eyebrow">Şikâyet yönetimi / {_detail_value(d.get("complaint_no"))}</div>'
+        '<h1>Şikâyet Detayı</h1>'
+        f'<div class="k360-hero-product">{_detail_value(clean_product)}</div>'
+        f'<div class="k360-hero-manufacturer">{_detail_value(manufacturer)}</div>'
+        f'<div class="k360-badges"><span class="k360-badge {status_class}">Durum: {_detail_value(d.get("status"))}</span>'
+        f'<span class="k360-badge {priority_class}">Öncelik: {_detail_value(auto_prio)}</span>'
+        f'<span class="k360-badge">Sorumlu: {_detail_value(d.get("owner"))}</span></div></section>',
+        unsafe_allow_html=True,
+    )
+    t1, t2, t3, t4, t5, t6 = st.tabs([
+        "Genel Bilgiler", "Doğruluk Analizi", "İletişim Takibi",
+        "İşlem Geçmişi", "Tarihçe ve Benzerlik", "Raporlama (FR-66)",
+    ])
+
     with t1:
         desc_l = str(d.get("description") or "").lower()
         has_translation = bool(tr_desc_val or tr_plan_val)
@@ -475,51 +574,60 @@ def render(user):
         elif "overheating" in desc_l or "thermal" in desc_l: health_effect = "Termal Maruziyet Riski / Yetersiz Bilgi (4580)" if has_translation else "Thermal Exposure Risk / Insufficient Info (4580)"
         else: health_effect = "Yetersiz Klinik Bilgi (4580)" if has_translation else "Insufficient Information (4580)"
 
-        event_badge = "🔴 **Ciddi Yaralanma (Serious Injury)**" if "injury" in event_type.lower() else ("⚫ **Ölüm (Death)**" if "death" in event_type.lower() else "🟡 **Cihaz Arızası (Malfunction)**")
+        event_label = "Ciddi Yaralanma (Serious Injury)" if "injury" in event_type.lower() else ("Ölüm (Death)" if "death" in event_type.lower() else "Cihaz Arızası (Malfunction)")
         gen_pool = exact_match_df if not exact_match_df.empty else (same_model_df if not same_model_df.empty else past_data)
         gen_sla_days, _, _ = estimate_sla_days(gen_pool, fallback_row=d)
 
         col_info1, col_info2 = st.columns(2)
         with col_info1:
-            st.markdown(f"**📦 Ürün:** `{clean_product}`")
-            st.markdown(f"**🏢 Üretici Firma:** `{manufacturer}`")
-            st.markdown(f"**📑 MDR Rapor No:** `{d.get('order_no') or '-'}`")
-            st.markdown(f"**⏱️ Tahmini Kapatma Süresi:** `{gen_sla_days} Gün`")
+            st.markdown(_detail_fields("Ürün ve kayıt bilgileri", [
+                ("Ürün", clean_product, True),
+                ("Üretici firma", manufacturer, True),
+                ("MDR rapor no", d.get("order_no"), False),
+                ("Tahmini kapatma süresi", f"{gen_sla_days} gün", False),
+            ]), unsafe_allow_html=True)
         with col_info2:
-            st.markdown(f"**⚠️ Raporlanan Olay Türü:** {event_badge}")
-            st.markdown(f"**🩺 Klinik Sağlık Etkisi:** `{health_effect}`")
-            st.markdown(f"**⏱️ Şikâyet Durumu:** `{d.get('status')}` | **Öncelik:** `{auto_prio}`")
-            st.markdown(f"**🎯 Öncelik Skoru & Nedeni:** `NLP: {s_score:+.2f} · Skor: {p_rank}/100` — *{p_reason}*")
+            risk_fields = _detail_fields("Olay ve öncelik değerlendirmesi", [
+                ("Raporlanan olay türü", event_label, True),
+                ("Klinik sağlık etkisi", health_effect, True),
+            ])
+            score_percent = min(100.0, max(0.0, float(p_rank)))
+            score_html = (
+                '<div class="k360-score-line"><span>Öncelik skoru</span>'
+                f'<strong>{p_rank} <span>/ 100</span></strong></div>'
+                f'<div class="k360-score-track" role="meter" aria-label="Öncelik skoru" '
+                f'aria-valuenow="{score_percent}" aria-valuemin="0" aria-valuemax="100">'
+                f'<div class="k360-score-fill" style="width:{score_percent}%"></div></div>'
+                f'<div class="k360-note">NLP: {s_score:+.2f} · {_detail_value(p_reason)}</div>'
+            )
+            st.markdown(risk_fields.replace('</section>', score_html + '</section>'), unsafe_allow_html=True)
 
-        st.divider()
         if not has_translation and (raw_desc != "FDA vaka metni belirtilmemiş." or raw_plan != "Üretici inceleme/servis raporu henüz girilmemiş."):
             col_btn, _ = st.columns([1, 2])
             with col_btn:
-                if st.button("🇹🇷 Orijinal Metinleri Türkçeye Çevir", type="primary", use_container_width=True):
+                if st.button("Orijinal Metinleri Türkçeye Çevir", type="primary", use_container_width=True):
                     with st.spinner("Medikal terminolojiyle Türkçeye çevriliyor..."):
                         t_desc, t_plan = translate_and_cache_complaint(int(cid), force_translate=True)
                         if not t_desc and not t_plan: st.error("Google Çeviri servisi yanıt vermedi.")
                         else: st.rerun()
 
-        st.markdown("#### 📢 Müşteri Şikâyeti")
-        st.info(disp_desc)
+        _detail_text("Müşteri şikâyeti", disp_desc)
         if has_translation and tr_desc_val and tr_desc_val != raw_desc:
-            with st.expander("🌐 Orijinal İngilizce Metni Göster (Event Description)"): st.caption(raw_desc)
+            with st.expander("Orijinal İngilizce Metni Göster (Event Description)"): st.caption(raw_desc)
 
-        st.markdown("#### 🛠️ Üretilen Çözüm / Üretici İncelemesi")
-        st.success(disp_plan)
+        _detail_text("Üretilen çözüm / Üretici incelemesi", disp_plan, solution=True)
         if has_translation and tr_plan_val and tr_plan_val != raw_plan:
-            with st.expander("🌐 Orijinal İngilizce Metni Göster (Manufacturer Narrative)"): st.caption(raw_plan)
+            with st.expander("Orijinal İngilizce Metni Göster (Manufacturer Narrative)"): st.caption(raw_plan)
 
     with t2:
-        st.subheader("⚖️ Doğruluk Analizi")
+        st.subheader("Doğruluk Analizi")
         col_cmp1, col_cmp2 = st.columns([3, 1])
         with col_cmp1:
-            st.markdown("**📢 Müşteri Şikâyeti (Özet):**"); st.write(disp_desc[:180] + ("..." if len(disp_desc) > 180 else ""))
-            st.markdown("**🛠️ Üretici Raporu (Özet):**"); st.write(disp_plan[:180] + ("..." if len(disp_plan) > 180 else ""))
+            st.markdown("**Müşteri Şikâyeti (Özet):**"); st.write(disp_desc[:180] + ("..." if len(disp_desc) > 180 else ""))
+            st.markdown("**Üretici Raporu (Özet):**"); st.write(disp_plan[:180] + ("..." if len(disp_plan) > 180 else ""))
         with col_cmp2:
             st.write(""); st.write("")
-            if st.button("🔍 Doğruluk Analizini Başlat", type="primary", use_container_width=True, key=f"btn_verify_{cid}"):
+            if st.button("Doğruluk Analizini Başlat", type="primary", use_container_width=True, key=f"btn_verify_{cid}"):
                 with st.spinner("Analiz ediliyor..."):
                     sol_l, comp_l = str(d.get("action_plan") or "").lower(), str(d.get("description") or "").lower()
                     subject = "motor elceğinin aşırı ısınması" if any(k in comp_l for k in ["overheating","hot","ısın"]) else ("pens mekanizmasının kilitlenmesi" if any(k in comp_l for k in ["collet","stuck","pens"]) else ("cihaz kablo hasarı ve temassızlığı" if any(k in comp_l for k in ["cable","kablo"]) else ("rulman dağılması ve mekanik ses" if any(k in comp_l for k in ["bearing","rulman"]) else "motor fonksiyon kaybı ve ani durma")))
@@ -531,19 +639,19 @@ def render(user):
                         if not is_eval: paragraph = "**İnceleme Yapılamadı (Sonuçsuz);** çünkü üretici inceleme raporunda cihazın fabrikaya fiziki olarak geri gönderilmediği tespit edilmiştir."
                         elif not is_def: paragraph = f"**Şikâyet Doğrulanamadı (Hata Yok);** çünkü üreticinin laboratuvar testlerinde cihazın teknik şartnamelere tam uyumlu çalıştığı görülmüş{temp_str}, bildirilen arıza tekrarlanamamıştır."
                         else: paragraph = f"**Şikâyet Doğru;** çünkü üretici teknik servis incelemesinde somut olarak {dmg_str} tespit edilmiş{temp_str}; arızalı bileşenler doğrulanarak kalite süreci işletilmiştir."
-                        st.session_state[f"cmp_analysis_method_{cid}"] = "🤖 Analiz Metodu: LLM Yapılandırılmış Veri Çıkarımı (JSON)"
+                        st.session_state[f"cmp_analysis_method_{cid}"] = "Analiz Metodu: LLM Yapılandırılmış Veri Çıkarımı (JSON)"
                     else:
                         is_unconfirmed = any(k in sol_l for k in ["not confirmed","could not confirm","no defect","within specification","operated as intended","could not reproduce"])
                         is_not_returned = any(k in sol_l for k in ["not returned","no evaluation was performed","no conclusion can be drawn"])
                         if is_unconfirmed: paragraph = f"**Şikâyet Doğrulanamadı (Hata Yok);** çünkü bildirilen {subject} arızasına karşılık üretici testlerinde cihazın şartnamelere uygun çalıştığı görülmüştür."
                         elif not is_not_returned and len(sol_l) > 20: paragraph = f"**Şikâyet Doğru;** çünkü bildirilen {subject} arızası teknik servis incelemesinde somut olarak tespit edilmiş ve doğrulanmıştır."
                         else: paragraph = f"**İnceleme Yapılamadı (Sonuçsuz);** çünkü cihaz fabrikaya geri gönderilmediğinden fiziki inceleme yapılamamıştır."
-                        st.session_state[f"cmp_analysis_method_{cid}"] = "⚙️ Analiz Metodu: Kural Tabanlı Karar Ağacı"
+                        st.session_state[f"cmp_analysis_method_{cid}"] = "Analiz Metodu: Kural Tabanlı Karar Ağacı"
                     st.session_state[f"cmp_analysis_{cid}"] = paragraph
 
         if st.session_state.get(f"cmp_analysis_{cid}"):
-            st.markdown("#### 📋 Analiz Özeti")
-            if st.session_state.get(f"cmp_analysis_method_{cid}"): st.caption(st.session_state[f"cmp_analysis_method_{cid}"])
+            st.markdown("#### Analiz Özeti")
+            if st.session_state.get(f"cmp_analysis_method_{cid}"): st.caption(re.sub(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F]", "", st.session_state[f"cmp_analysis_method_{cid}"]).strip())
             st.markdown(f'<div style="background-color:rgba(37,99,235,0.08);border-left:5px solid #2563eb;padding:16px 20px;border-radius:8px;font-size:15.5px;line-height:1.6;">{st.session_state[f"cmp_analysis_{cid}"]}</div>', unsafe_allow_html=True)
 
     with t3:
@@ -563,137 +671,17 @@ def render(user):
         else: st.info("İşlem geçmişi bulunmuyor.")
 
     with t5:
-        st.markdown("""
-        <style>
-        /* İncelenen Vaka Profili Rozeti (Badge) İçin Özel Sınıf */
-        .custom-profile-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background-color: #f8fafc;
-            padding: 10px 18px;
-            border-radius: 10px;
-            border: 1px solid #e2e8f0;
-            font-size: 14px;
-            color: #1e293b;
-            margin-bottom: 24px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-        }
-
-        /* Radio Grubu Genel Yerleşimi (Streamlit'in varsayılan yapısını eziyoruz) */
-        div[data-testid="stRadio"] {
-            margin-bottom: 20px !important;
-        }
-        div[data-testid="stRadio"] > label {
-            display: none !important; /* "Analiz Havuzu Kapsamı:" başlığını gizliyoruz, kartlarda zaten anlaşılıyor */
-        }
-        div[data-testid="stRadio"] > div[role="radiogroup"] {
-            display: flex !important;
-            flex-direction: row !important;
-            gap: 16px !important;
-        }
-        
-        /* Kartların Dış Çerçevesi */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label {
-            background-color: #ffffff !important;
-            border: 1px solid #e2e8f0 !important;
-            border-radius: 12px !important;
-            padding: 16px 16px 16px 56px !important; /* İkon için soldan geniş boşluk */
-            flex: 1 !important;
-            position: relative !important;
-            cursor: pointer !important;
-            display: block !important;
-            margin: 0 !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
-            transition: all 0.2s ease !important;
-        }
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
-            border-color: #cbd5e1 !important;
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05) !important;
-        }
-        
-        /* Seçili Durum */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"],
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
-            border-color: #3b82f6 !important;
-            background-color: #f0f7ff !important;
-            box-shadow: 0 0 0 1px #3b82f6 !important;
-        }
-
-        /* Seçim Yuvarlağını (Input) Sağ Üste Taşıma */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
-            position: absolute !important;
-            right: 16px !important;
-            top: 18px !important;
-        }
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:last-child {
-            width: 100% !important;
-            display: block !important;
-        }
-
-        /* Vektörel (SVG) İkonlar */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label::before {
-            content: '';
-            position: absolute;
-            left: 16px;
-            top: 16px;
-            width: 24px;
-            height: 24px;
-            background-size: contain;
-            background-repeat: no-repeat;
-        }
-        
-        /* 1. İkon: Mavi Hedef */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(1)::before {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%232563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>');
-        }
-        
-        /* 2. İkon: Kahverengi Kutu */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(2)::before {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2392400e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>');
-        }
-        
-        /* 3. İkon: Yeşil Parça/Çiçek */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(3)::before {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm0 14a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm7-7a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm-14 0a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5z"></path><circle cx="12" cy="12" r="3"></circle></svg>');
-        }
-
-        /* Metin Biçimlendirmesi */
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
-            margin: 0 !important;
-            font-size: 13px !important;
-            color: #64748b !important;
-            line-height: 1.5 !important;
-        }
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label p strong {
-            display: block !important;
-            font-size: 15px !important;
-            color: #0f172a !important;
-            margin-bottom: 4px !important;
-        }
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] p strong,
-        div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p strong {
-            color: #1d4ed8 !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown('<div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;"><div style="background-color:#3b82f6; color:white; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🔍</div><h3 style="margin:0; padding:0; color:#0f172a; font-weight:700;">Benzer Şikâyetler, Kök Neden Eşleşmesi ve Çözüm Reçetesi</h3></div>', unsafe_allow_html=True)
+        st.subheader("Benzer Şikâyetler ve Çözüm Analizi", anchor=False)
 
         if not past_data.empty:
             calc_sim = lambda r: (50 if r["Model_Kodu"] == curr_model else 0) + (40 if r["Hata_Nedeni"] == curr_cause else 0) + (10 if r.get("priority") == auto_prio else 0)
             past_data["Benzerlik_Skoru"] = past_data.apply(calc_sim, axis=1)
 
-            # Emojisiz, zarif SVG hedef ikonlu profil çerçevesi
-            st.markdown(f"""
-            <div class="custom-profile-badge">
-               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
-               <span style="font-weight:600; color:#3b82f6;">İncelenen Vaka Profili:</span>
-               <span>Model = <b style="color:#3b82f6;">{curr_model}</b></span>
-               <span style="color:#cbd5e1;">|</span>
-               <span>Tespit Edilen Hata Tipi = <b style="color:#3b82f6;">{curr_cause}</b></span>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="k360-profile"><span>İncelenen model: <strong>{_detail_value(curr_model)}</strong></span>'
+                f'<span>Hata tipi: <strong>{_detail_value(curr_cause)}</strong></span></div>',
+                unsafe_allow_html=True,
+            )
 
             # Streamlit Markdown desteğiyle satır kırılımlı şık metinler
             opt_tam = f"**Tam Eşleşme**  \nAynı Model ({curr_model}) VE  \nAynı Hata Tipi ({curr_cause})"
@@ -724,59 +712,41 @@ def render(user):
                 
                 if (len(exact_match_df) >= 10 and confirmed_ratio >= 50):
                     capa_text = "<b>DÖF (CAPA) Önerisi:</b> Bu model ve arıza kombinasyonunda yüksek doğrulama oranı tespit edildi. Seri/Lot bazlı proses kontrolü başlatılmalıdır."
-                    capa_icon = "🚨" # Karar destek içindeki kritik durum emoji/ikonsu uyarısı standart kalabilir (veya isterseniz kaldırabilirsiniz)
                 else:
                     capa_text = "<b>Süreç Durumu:</b> Standart servis prosedürü işletilebilir."
-                    capa_icon = "✅"
 
-                st.markdown(f"""
-                <div style="display:flex; background: linear-gradient(135deg, #f0f7ff, #f8fafc); border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); overflow: hidden; position: relative;">
-                    <div style="flex: 0 0 26%; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; border-right: 1px solid #cbd5e1; padding-right: 20px; z-index:2;">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="background:#dbeafe; color:#1d4ed8; padding:8px; border-radius:8px; font-size:16px; width:32px; height:32px; display:flex; justify-content:center; align-items:center;">📄</div>
-                            <span style="color:#1e293b; font-weight:600; font-size:14px;">{scope_label}</span>
-                        </div>
-                        <div style="font-size:42px; font-weight:800; color:#0f172a; margin-top:12px; line-height:1;">
-                            {len(similar_pool)} <span style="font-size:18px; font-weight:600; color:#64748b;">adet</span>
-                        </div>
-                    </div>
-                    <div style="flex: 1; padding-left: 28px; z-index:2;">
-                        <div style="display:flex; align-items:center; gap:8px; margin-bottom: 12px;">
-                            <span style="font-size:22px;">💡</span>
-                            <strong style="color:#1d4ed8; font-size:16px;">Kalite Mühendisi Karar Destek Özeti:</strong>
-                        </div>
-                        <ul style="list-style:none; padding:0; margin:0; font-size:14px; color:#334155; line-height:1.7;">
-                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">📊</span> <span>İncelenen <b>{len(similar_pool)}</b> benzer vakanın <b>%{confirmed_ratio:.1f}</b>'sinde müşteri şikâyeti teknik incelemede <b>doğrulanmıştır</b>.</span></li>
-                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">⚙️</span> <span>Geçmişte bu arıza için en sık uygulanan çözüm: <b>{top_action}</b> | En sık hasar gören alt bileşen: <b>{top_part}</b>.</span></li>
-                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">⏱️</span> <span><b>Tahmini Kapatma Süresi (SLA): {pool_sla_days} Gün</b> <i style="color:#64748b;">(Seçili havuzdaki {pool_sla_cnt} vakanın istatistiksel/regresyon ortalaması)</i>.</span></li>
-                            <li style="display:flex; align-items:start; gap:10px;"><span style="font-size:16px; min-width:20px;">{capa_icon}</span> <span>{capa_text}</span></li>
-                        </ul>
-                    </div>
-                    <div style="position: absolute; right: -25px; bottom: -30px; opacity: 0.04; font-size: 160px; pointer-events:none; z-index:1; transform: rotate(-5deg);">
-                        📊🔍
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
+                st.markdown(
+                    '<section class="k360-card k360-summary"><div><div class="k360-eyebrow">Benzer vaka havuzu</div>'
+                    f'<div class="k360-summary-count">{len(similar_pool)} <span style="font-size: .9rem; font-weight: 500;">kayıt</span></div>'
+                    f'<div class="k360-note">{_detail_value(scope_label)}</div></div><div>'
+                    '<h3>Kalite mühendisi karar destek özeti</h3><ul>'
+                    f'<li>Benzer vakaların <strong>%{confirmed_ratio:.1f}</strong> oranında şikâyet teknik incelemede doğrulanmıştır.</li>'
+                    f'<li>En sık uygulanan çözüm: <strong>{_detail_value(top_action)}</strong>. '
+                    f'En sık hasar gören bileşen: <strong>{_detail_value(top_part)}</strong>.</li>'
+                    f'<li>Tahmini kapatma süresi: <strong>{pool_sla_days} gün</strong> '
+                    f'({pool_sla_cnt} vakanın istatistiksel/regresyon ortalaması).</li>'
+                    f'<li>{capa_text}</li></ul></div></section>', unsafe_allow_html=True,
+                )
+
                 st.divider()
                 
                 col_left, col_right, col_part = st.columns(3)
                 with col_left:
-                    st.markdown("##### 🛠️ Alınan Mühendislik Aksiyonları")
+                    st.markdown("##### Alınan Mühendislik Aksiyonları")
                     act_counts = similar_pool["Mühendislik_Aksiyonu"].value_counts().reset_index()
                     act_counts.columns = ["Alınan Aksiyon", "Vaka Sayısı"]
                     fig_actions = px.bar(act_counts, x="Alınan Aksiyon", y="Vaka Sayısı", text="Vaka Sayısı", color="Alınan Aksiyon", color_discrete_sequence=px.colors.qualitative.Safe)
                     fig_actions.update_traces(textposition="outside"); fig_actions.update_layout(showlegend=False, height=340, margin=dict(l=10,r=10,t=25,b=10), xaxis_tickangle=-25, xaxis_title="", yaxis_title="Vaka Adedi")
                     st.plotly_chart(fig_actions, use_container_width=True)
                 with col_right:
-                    st.markdown("##### 🎯 Doğruluk Oranı (Dağılım)")
+                    st.markdown("##### Doğruluk Oranı (Dağılım)")
                     val_counts = similar_pool["Şikâyet Doğruluğu"].value_counts().reset_index()
                     val_counts.columns = ["Doğruluk Durumu", "Adet"]
                     fig_val = px.pie(val_counts, names="Doğruluk Durumu", values="Adet", hole=0.45, color="Doğruluk Durumu", color_discrete_map={"Şikâyet Doğru":"#10b981","Şikâyet Yanlış":"#ef4444","İnceleme Yapılıyor":"#f59e0b","Çözüm Belirtilmemiş":"#94a3b8"})
                     fig_val.update_traces(textposition='inside', textinfo='percent+label'); fig_val.update_layout(height=340, margin=dict(l=10,r=10,t=10,b=10), legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"))
                     st.plotly_chart(fig_val, use_container_width=True)
                 with col_part:
-                    st.markdown("##### ⚙️ Hasar Tespit Edilen Alt Bileşenler")
+                    st.markdown("##### Hasar Tespit Edilen Alt Bileşenler")
                     part_counts = similar_pool["Hasarlı_Alt_Bileşen"].value_counts().reset_index()
                     part_counts.columns = ["Alt Bileşen", "Vaka Sayısı"]
                     fig_parts = px.bar(part_counts, x="Vaka Sayısı", y="Alt Bileşen", orientation="h", text="Vaka Sayısı", color_discrete_sequence=["#6366f1"])
@@ -792,7 +762,7 @@ def render(user):
                     st.session_state.detail_id = int(detail_table.iloc[event.selection.rows[0]]["ID"]); st.rerun()
 
     with t6:
-        st.subheader("📄 FR-66R(06)-TR Müşteri Geri Bildirim ve Soruşturma Raporu")
+        st.subheader("FR-66R(06)-TR Müşteri Geri Bildirim ve Soruşturma Raporu")
         ref_pool = exact_match_df if not exact_match_df.empty else same_model_df
         has_sim_default = "Evet" if not ref_pool.empty else "Hayır"
         if not ref_pool.empty:
@@ -847,7 +817,7 @@ def render(user):
             f_closure_comm = st.text_area("Kapatma Yorumları", value=f"{d.get('complaint_no')} kaydı '{curr_validity}' durumu ve '{rec_action}' aksiyonu ile kapatılmıştır.", height=65)
             c8_1, c8_2, c8_3, c8_4 = st.columns(4)
             f_closed_by, f_closure_date, f_qm_manager, f_qm_date = c8_1.text_input("Kapatan", value=str(user.get("full_name"))), c8_2.text_input("Kapatma Tarihi", value=today_str), c8_3.text_input("KYS Müdürü", value="KYS Müdürü"), c8_4.text_input("KYS Tarihi", value=today_str)
-            save_form_btn = st.form_submit_button("✅ Rapor Bilgilerini Onayla ve PDF Oluştur", type="primary", use_container_width=True)
+            save_form_btn = st.form_submit_button("Rapor Bilgilerini Onayla ve PDF Oluştur", type="primary", use_container_width=True)
 
         form_payload = {
             "report_date":today_str,"customer_name":f_cust_name,"customer_code":f_cust_code,"contact_person":f_contact,"phone":f_phone,"email":f_email,"address":f_address,
@@ -858,7 +828,7 @@ def render(user):
             "prev_dof_no":f_prev_dof_no,"dof_required":f_dof_req,"new_dof_no":f_new_dof_no,"dof_no_reason":f_dof_reason,"approver":f_approver,"approval_date":f_app_date,
             "closure_comments":f_closure_comm,"closed_by":f_closed_by,"closure_date":f_closure_date,"qm_manager":f_qm_manager,"qm_date":f_qm_date
         }
-        if save_form_btn: st.success("🎉 FR-66 Rapor verileri güncellendi!")
+        if save_form_btn: st.success("FR-66 Rapor verileri güncellendi!")
         try:
-            st.download_button(f"📥 FR-66 Raporunu PDF İndir ({d['complaint_no']}.pdf)", data=build_fr66_pdf(form_payload), file_name=f"FR-66_{d['complaint_no']}.pdf", mime="application/pdf", type="primary", use_container_width=True)
+            st.download_button(f"FR-66 Raporunu PDF İndir ({d['complaint_no']}.pdf)", data=build_fr66_pdf(form_payload), file_name=f"FR-66_{d['complaint_no']}.pdf", mime="application/pdf", type="primary", use_container_width=True)
         except Exception as e: st.error(f"PDF hatası: {e}")
