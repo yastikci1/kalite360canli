@@ -563,27 +563,151 @@ def render(user):
         else: st.info("İşlem geçmişi bulunmuyor.")
 
     with t5:
-        st.subheader("🔍 Benzer Şikâyetler, Kök Neden Eşleşmesi ve Çözüm Reçetesi")
+        st.markdown("""
+        <style>
+        /* İncelenen Vaka Profili Rozeti (Badge) İçin Özel Sınıf */
+        .custom-profile-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background-color: #f8fafc;
+            padding: 10px 18px;
+            border-radius: 10px;
+            border: 1px solid #e2e8f0;
+            font-size: 14px;
+            color: #1e293b;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        }
+
+        /* Radio Grubu Genel Yerleşimi (Streamlit'in varsayılan yapısını eziyoruz) */
+        div[data-testid="stRadio"] {
+            margin-bottom: 20px !important;
+        }
+        div[data-testid="stRadio"] > label {
+            display: none !important; /* "Analiz Havuzu Kapsamı:" başlığını gizliyoruz, kartlarda zaten anlaşılıyor */
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] {
+            display: flex !important;
+            flex-direction: row !important;
+            gap: 16px !important;
+        }
+        
+        /* Kartların Dış Çerçevesi */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+            background-color: #ffffff !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 12px !important;
+            padding: 16px 16px 16px 56px !important; /* İkon için soldan geniş boşluk */
+            flex: 1 !important;
+            position: relative !important;
+            cursor: pointer !important;
+            display: block !important;
+            margin: 0 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+            transition: all 0.2s ease !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+            border-color: #cbd5e1 !important;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05) !important;
+        }
+        
+        /* Seçili Durum */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"],
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+            border-color: #3b82f6 !important;
+            background-color: #f0f7ff !important;
+            box-shadow: 0 0 0 1px #3b82f6 !important;
+        }
+
+        /* Seçim Yuvarlağını (Input) Sağ Üste Taşıma */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+            position: absolute !important;
+            right: 16px !important;
+            top: 18px !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:last-child {
+            width: 100% !important;
+            display: block !important;
+        }
+
+        /* Vektörel (SVG) İkonlar */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label::before {
+            content: '';
+            position: absolute;
+            left: 16px;
+            top: 16px;
+            width: 24px;
+            height: 24px;
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+        
+        /* 1. İkon: Mavi Hedef */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(1)::before {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%232563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>');
+        }
+        
+        /* 2. İkon: Kahverengi Kutu */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(2)::before {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%2392400e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>');
+        }
+        
+        /* 3. İkon: Yeşil Parça/Çiçek */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(3)::before {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm0 14a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm7-7a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5zm-14 0a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-5 0 2.5 2.5 0 0 1 2.5-2.5z"></path><circle cx="12" cy="12" r="3"></circle></svg>');
+        }
+
+        /* Metin Biçimlendirmesi */
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label p {
+            margin: 0 !important;
+            font-size: 13px !important;
+            color: #64748b !important;
+            line-height: 1.5 !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label p strong {
+            display: block !important;
+            font-size: 15px !important;
+            color: #0f172a !important;
+            margin-bottom: 4px !important;
+        }
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label[data-checked="true"] p strong,
+        div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p strong {
+            color: #1d4ed8 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown('<div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;"><div style="background-color:#3b82f6; color:white; width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🔍</div><h3 style="margin:0; padding:0; color:#0f172a; font-weight:700;">Benzer Şikâyetler, Kök Neden Eşleşmesi ve Çözüm Reçetesi</h3></div>', unsafe_allow_html=True)
+
         if not past_data.empty:
             calc_sim = lambda r: (50 if r["Model_Kodu"] == curr_model else 0) + (40 if r["Hata_Nedeni"] == curr_cause else 0) + (10 if r.get("priority") == auto_prio else 0)
             past_data["Benzerlik_Skoru"] = past_data.apply(calc_sim, axis=1)
-            st.caption(f"🎯 **İncelenen Vaka Profili:** Model = `{curr_model}` · Tespit Edilen Hata Tipi = `{curr_cause}`")
 
-            scope = st.radio("Analiz Havuzu Kapsamı:", [
-                f"🎯 Tam Eşleşme: Aynı Model ({curr_model}) VE Aynı Hata Tipi ({curr_cause})",
-                f"📦 Model Havuzu: Sadece {curr_model} Modeline Ait Tüm Vakalar",
-                f"🧩 Arıza Havuzu: Tüm Modellerdeki '{curr_cause}' Vakaları"
-            ], horizontal=True)
+            # Emojisiz, zarif SVG hedef ikonlu profil çerçevesi
+            st.markdown(f"""
+            <div class="custom-profile-badge">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>
+               <span style="font-weight:600; color:#3b82f6;">İncelenen Vaka Profili:</span>
+               <span>Model = <b style="color:#3b82f6;">{curr_model}</b></span>
+               <span style="color:#cbd5e1;">|</span>
+               <span>Tespit Edilen Hata Tipi = <b style="color:#3b82f6;">{curr_cause}</b></span>
+            </div>
+            """, unsafe_allow_html=True)
 
-            if scope.startswith("🎯"): similar_pool, scope_label = exact_match_df.copy(), f"Tam Eşleşme ({curr_model} + {curr_cause})"
-            elif scope.startswith("📦"): similar_pool, scope_label = same_model_df.copy(), f"Model Havuzu ({curr_model})"
-            else: similar_pool, scope_label = same_cause_df.copy(), f"Arıza Havuzu ({curr_cause})"
+            # Streamlit Markdown desteğiyle satır kırılımlı şık metinler
+            opt_tam = f"**Tam Eşleşme**  \nAynı Model ({curr_model}) VE  \nAynı Hata Tipi ({curr_cause})"
+            opt_mod = f"**Model Havuzu**  \nSadece {curr_model} Modeline Ait  \nTüm Vakalar"
+            opt_ari = f"**Arıza Havuzu**  \nTüm Modellerdeki '{curr_cause}' Vakaları"
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric(f"Aynı Model ({curr_model})", f"{len(same_model_df)} adet")
-            m2.metric(f"Aynı Arıza ({curr_cause})", f"{len(same_cause_df)} adet")
-            m3.metric("Tam Eşleşme (Model + Arıza)", f"{len(exact_match_df)} adet")
-            m4.metric("Seçili Analiz Havuzu", f"{len(similar_pool)} kayıt")
+            scope = st.radio("Analiz Havuzu Kapsamı:", [opt_tam, opt_mod, opt_ari], horizontal=True)
+
+            if "Tam Eşleşme" in scope:
+                similar_pool, scope_label = exact_match_df.copy(), f"Tam Eşleşme ({curr_model} + {curr_cause})"
+            elif "Model Havuzu" in scope:
+                similar_pool, scope_label = same_model_df.copy(), f"Model Havuzu ({curr_model})"
+            else:
+                similar_pool, scope_label = same_cause_df.copy(), f"Arıza Havuzu ({curr_cause})"
 
             if not similar_pool.empty:
                 similar_pool["Benzerlik_Skoru"] = similar_pool.apply(calc_sim, axis=1)
@@ -597,16 +721,45 @@ def render(user):
                 top_action = valid_actions["Mühendislik_Aksiyonu"].mode()[0] if not valid_actions.empty else "Teknik Servis İncelemesi"
                 valid_parts = similar_pool[similar_pool["Hasarlı_Alt_Bileşen"] != "Belirtilmemiş / Genel"]
                 top_part = valid_parts["Hasarlı_Alt_Bileşen"].mode()[0] if not valid_parts.empty else "Rulman / Motor Grubu"
-                capa_warning = "🚨 **DÖF (CAPA) Önerisi:** Bu model ve arıza kombinasyonunda yüksek doğrulama oranı tespit edildi. Seri/Lot bazlı proses kontrolü başlatılmalıdır." if (len(exact_match_df) >= 10 and confirmed_ratio >= 50) else "✅ **Süreç Durumu:** Standart servis prosedürü işletilebilir."
+                
+                if (len(exact_match_df) >= 10 and confirmed_ratio >= 50):
+                    capa_text = "<b>DÖF (CAPA) Önerisi:</b> Bu model ve arıza kombinasyonunda yüksek doğrulama oranı tespit edildi. Seri/Lot bazlı proses kontrolü başlatılmalıdır."
+                    capa_icon = "🚨" # Karar destek içindeki kritik durum emoji/ikonsu uyarısı standart kalabilir (veya isterseniz kaldırabilirsiniz)
+                else:
+                    capa_text = "<b>Süreç Durumu:</b> Standart servis prosedürü işletilebilir."
+                    capa_icon = "✅"
 
-                st.info(
-                    f"💡 **Kalite Mühendisi Karar Destek Özeti:**\n"
-                    f"- İncelenen **{len(similar_pool)}** benzer vakanın **%{confirmed_ratio:.1f}** kadarında müşteri şikâyeti teknik incelemede **doğrulanmıştır**.\n"
-                    f"- Geçmişte bu arıza için en sık uygulanan çözüm: **{top_action}** | En sık hasar gören alt bileşen: **{top_part}**.\n"
-                    f"- ⏱️ **Tahmini Kapatma Süresi (SLA):** **{pool_sla_days} Gün** *(Seçili {scope_label} havuzundaki {pool_sla_cnt} vakanın istatistiksel/regresyon ortalaması)*.\n"
-                    f"- {capa_warning}"
-                )
+                st.markdown(f"""
+                <div style="display:flex; background: linear-gradient(135deg, #f0f7ff, #f8fafc); border: 1px solid #e2e8f0; border-radius: 12px; padding: 25px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.03); overflow: hidden; position: relative;">
+                    <div style="flex: 0 0 26%; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; border-right: 1px solid #cbd5e1; padding-right: 20px; z-index:2;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div style="background:#dbeafe; color:#1d4ed8; padding:8px; border-radius:8px; font-size:16px; width:32px; height:32px; display:flex; justify-content:center; align-items:center;">📄</div>
+                            <span style="color:#1e293b; font-weight:600; font-size:14px;">{scope_label}</span>
+                        </div>
+                        <div style="font-size:42px; font-weight:800; color:#0f172a; margin-top:12px; line-height:1;">
+                            {len(similar_pool)} <span style="font-size:18px; font-weight:600; color:#64748b;">adet</span>
+                        </div>
+                    </div>
+                    <div style="flex: 1; padding-left: 28px; z-index:2;">
+                        <div style="display:flex; align-items:center; gap:8px; margin-bottom: 12px;">
+                            <span style="font-size:22px;">💡</span>
+                            <strong style="color:#1d4ed8; font-size:16px;">Kalite Mühendisi Karar Destek Özeti:</strong>
+                        </div>
+                        <ul style="list-style:none; padding:0; margin:0; font-size:14px; color:#334155; line-height:1.7;">
+                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">📊</span> <span>İncelenen <b>{len(similar_pool)}</b> benzer vakanın <b>%{confirmed_ratio:.1f}</b>'sinde müşteri şikâyeti teknik incelemede <b>doğrulanmıştır</b>.</span></li>
+                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">⚙️</span> <span>Geçmişte bu arıza için en sık uygulanan çözüm: <b>{top_action}</b> | En sık hasar gören alt bileşen: <b>{top_part}</b>.</span></li>
+                            <li style="display:flex; align-items:start; gap:10px; margin-bottom:8px;"><span style="font-size:16px; min-width:20px;">⏱️</span> <span><b>Tahmini Kapatma Süresi (SLA): {pool_sla_days} Gün</b> <i style="color:#64748b;">(Seçili havuzdaki {pool_sla_cnt} vakanın istatistiksel/regresyon ortalaması)</i>.</span></li>
+                            <li style="display:flex; align-items:start; gap:10px;"><span style="font-size:16px; min-width:20px;">{capa_icon}</span> <span>{capa_text}</span></li>
+                        </ul>
+                    </div>
+                    <div style="position: absolute; right: -25px; bottom: -30px; opacity: 0.04; font-size: 160px; pointer-events:none; z-index:1; transform: rotate(-5deg);">
+                        📊🔍
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+                
                 st.divider()
+                
                 col_left, col_right, col_part = st.columns(3)
                 with col_left:
                     st.markdown("##### 🛠️ Alınan Mühendislik Aksiyonları")
