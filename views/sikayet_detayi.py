@@ -1,3 +1,4 @@
+from failure_classifier import (classify_failure, annotate_failures, resolve_smart_root_cause, extract_root_cause, FAILURE_GROUPS, ALL_SUBTYPES, SUBTYPE_TO_GROUP, UNKNOWN_SUBTYPE, filter_failures, detect_failure_filter, legacy_failure_group)
 import io, os, re, sys, subprocess
 from html import escape
 from datetime import date
@@ -17,140 +18,8 @@ def get_saved_models():
     models = [c.strip().upper() for c in raw.split(",") if c.strip()]
     return models if models else ["EM800", "MR8-AF02"]
 
-def _clean_negations(text: str) -> str:
-    t = str(text or "").lower()
-    if "medtronic submits this report" in t:
-        t = t.split("medtronic submits this report")[0]
-    neg_patterns = [
-        r"\bno\s+(?:overheating|heat|thermal|corrosion|rust|defect|failure|problem|fault|damage|noise|vibration|leak|leakage|short)\b",
-        r"\bdid\s+not\s+(?:overheat|fail|break|leak|malfunction)\b",
-        r"\bwithout\s+(?:overheating|damage|defect|issue)\b",
-        r"\bpassed\s+(?:all\s+)?(?:hipot|electrical|functional|temperature|thermal)\b",
-        r"\btemperature\s+was\s+measured\s+to\s+be\s+within\b",
-    ]
-    for pat in neg_patterns:
-        t = re.sub(pat, " ", t)
-    return t
 
-def extract_root_cause(text: str) -> str:
-    t = str(text or "").lower().strip()
-    if not t or "fda maude kaydında olay metni belirtilmemiş" in t:
-        return "Diğer / Tanımlanamayan"
 
-    if any(k in t for k in [
-        "overheat", "over-heat", "hot", "extremely warm", "warm to touch", "thermal",
-        "temperature", "burn", "burned", "burnt", "scald", "heat", "cooling",
-        "ısınma", "ısındı", "sıcaklık", "sıcak", "termal", "yanık", "aşırı ısı"
-    ]):
-        return "Aşırı Isınma"
-
-    if any(k in t for k in [
-        "break", "broke", "broken", "crack", "cracked", "fracture", "fractured",
-        "snap", "snapped", "shatter", "split", "severed", "sheared", "chipped",
-        "detach", "detached", "detachment", "separat", "came apart", "fell apart",
-        "fell off", "dislodg", "fragment", "piece broke", "bent", "deform", "dent",
-        "tip broke", "bur broke", "burr broke", "flute broke", "leg broke", "footplate broke",
-        "kırık", "kırıl", "çatlak", "çatla", "koptu", "kopma", "ayrıl", "parçalan", "yamul", "ezil"
-    ]):
-        return "Fiziksel Kırılma / Çatlak"
-
-    if any(k in t for k in [
-        "bearing", "worn", "wear", "rulman", "bilya", "aşınma", "aşındı", "dağılma",
-        "preventive maintenance", "inadequate maintenance", "lack of maintenance",
-        "lubricat", "grease", "oiling", "friction", "spindle", "rotor", "shaft worn",
-        "vane", "gear worn", "scoring", "galling", "rubbing", "fatigue", "overhaul",
-        "bakım eksik", "yağlama", "mekanik yıpranma", "mil aşın"
-    ]):
-        return "Rulman / Mekanik Aşınma"
-
-    if any(k in t for k in [
-        "stuck", "collet", "sıkışma", "sıkıştı", "kilitlen", "pens", "seized", "seizure",
-        "jam", "jammed", "bind", "binding", "locked", "lock", "unlock", "chuck", "detent",
-        "hold the bur", "hold the tool", "doesn't hold", "did not hold", "would not hold",
-        "not hold", "slip", "slipped", "slipping", "bur came out", "burr came out",
-        "insert", "insertion", "unable to remove", "difficult to remove", "removal",
-        "extract", "release", "attach", "connect", "disconnect", "disassembl", "assembl",
-        "fit", "seat", "seated", "engage", "thread", "stripped", "unscrew", "tight", "stiff",
-        "takılamadı", "çıkarılamadı", "uç tutmuyor", "uç sıkıştı"
-    ]):
-        return "Mekanik Sıkışma / Kilitlenme"
-
-    if any(k in t for k in [
-        "noise", "noisy", "ses", "rough", "vibrat", "titreşim", "vibrasyon",
-        "wobbl", "runout", "run-out", "eccentric", "salgı", "yalpalama",
-        "chatter", "rattl", "grind", "squeal", "whine", "screech", "loud",
-        "audible", "unbalanced", "unstable", "jumping", "skipping"
-    ]):
-        return "Anormal Ses / Titreşim"
-
-    if any(k in t for k in [
-        "cable", "wire", "wiring", "cord", "kablo", "temassız", "connector",
-        "plug", "pin", "socket", "receptacle", "hose", "tube", "tubing",
-        "pneumatic", "air leak", "hava kaçağı", "frayed", "exposed wire",
-        "strain relief", "kink", "pedal", "footswitch", "footpedal", "handpiece cord",
-        "konnektör", "soket", "bağlantı kopuk"
-    ]):
-        return "Kablo / Temassızlık"
-
-    if any(k in t for k in [
-        "hipot", "hi-pot", "shock", "electrical", "electric", "kaçak", "elektrik",
-        "short circuit", "shorted", "open circuit", "current", "voltage", "ground",
-        "insulation", "dielectric", "spark", "arc", "arcing", "smoke", "smell", "odor",
-        "fuse", "board", "pcb", "sensor", "hall", "stator", "coil", "winding",
-        "resistance", "ohm", "error code", "fault code", "alarm", "console error",
-        "kısa devre", "izolasyon", "sensör", "stator", "bobin", "hata kodu"
-    ]):
-        return "Elektriksel Hata / Kaçak"
-
-    if any(k in t for k in [
-        "corrosion", "corroded", "corros", "oksit", "pas", "paslanma", "rust", "rusted",
-        "oxid", "pitting", "pitted", "stain", "discolor", "faded", "peel", "peeling",
-        "flak", "coating", "anodiz", "autoclave", "steriliz", "washer", "chemical",
-        "moisture", "water ingress", "fluid ingress", "seal", "o-ring", "gasket",
-        "leak", "leaking", "sızdırma", "korozyon", "sterilizasyon"
-    ]):
-        return "Korozyon / Oksitlenme"
-
-    if any(k in t for k in [
-        "stop", "stopped", "stopping", "not work", "did not work", "does not work",
-        "would not work", "failed to work", "failed to run", "would not run",
-        "did not run", "not run", "fail to operate", "failed to operate",
-        "did not operate", "would not operate", "inoperative", "non-functional",
-        "not function", "failed to function", "ceased", "cut out", "shut off",
-        "shut down", "turn on", "power on", "would not start", "did not start",
-        "spin", "rotate", "rotation", "no rotation", "slow", "weak", "low power",
-        "loss of power", "no power", "lack of power", "torque", "rpm", "speed",
-        "stall", "stalled", "stalling", "intermittent", "hesitat", "dead",
-        "malfunction", "defective", "failed during", "failure",
-        "çalışmı", "çalışmadı", "durdu", "dönmüyor", "devir", "güç kaybı", "kesinti", "arızalandı"
-    ]):
-        return "Ani Durma / Çalışmama"
-
-    return "Diğer / Tanımlanamayan"
-
-def resolve_smart_root_cause(row) -> str:
-    desc_combined = f"{row.get('description') or ''} {row.get('tr_description') or ''}"
-    cause = extract_root_cause(desc_combined)
-    if cause != "Diğer / Tanımlanamayan":
-        return cause
-
-    rc_raw = f"{row.get('root_cause') or ''} {row.get('action_plan') or ''} {row.get('tr_action_plan') or ''}"
-    rc_cleaned = _clean_negations(rc_raw)
-    cause = extract_root_cause(rc_cleaned)
-    if cause != "Diğer / Tanımlanamayan":
-        return cause
-
-    full_context = f"{desc_combined} {rc_cleaned}".lower()
-    if any(k in full_context for k in ["bur", "burr", "attachment", "footplate", "guard", "hood", "collet", "tube", "chuck", "sleeve"]):
-        return "Mekanik Sıkışma / Kilitlenme"
-    if any(k in full_context for k in ["service", "repaired", "replaced", "overhaul", "rebuild", "maintenance", "worn", "age", "wear"]):
-        return "Rulman / Mekanik Aşınma"
-    if any(k in full_context for k in ["damage", "damaged", "broken", "fracture", "bent", "dent", "missing", "tip"]):
-        return "Fiziksel Kırılma / Çatlak"
-    if any(k in full_context for k in ["handpiece", "motor", "drill", "console", "pedal"]):
-        return "Ani Durma / Çalışmama"
-
-    return "Diğer / Tanımlanamayan"
 
 def extract_model_code(product_str, findings_str, saved_models):
     combined = f"{product_str or ''} {findings_str or ''}".upper()
@@ -187,7 +56,7 @@ def _row_resolution_days(row):
             diff = (cl_at - c_at).total_seconds() / 86400.0
             if diff > 0.1: return round(diff, 1)
     except Exception: pass
-    cause = resolve_smart_root_cause(row)
+    cause = legacy_failure_group(resolve_smart_root_cause(row))
     base_days = {"Rulman / Mekanik Aşınma":6.4,"Aşırı Isınma":7.2,"Elektriksel Hata / Kaçak":8.1,"Mekanik Sıkışma / Kilitlenme":5.3,"Korozyon / Oksitlenme":6.8,"Fiziksel Kırılma / Çatlak":5.9,"Kablo / Temassızlık":4.2,"Ani Durma / Çalışmama":6.0,"Anormal Ses / Titreşim":4.8,"Diğer / Tanımlanamayan":5.5}.get(cause, 5.8)
     prio_adj = {"Kritik":-1.1,"Yüksek":-0.5,"Orta":0.0,"Düşük":1.2}.get(str(row.get("priority") or "Orta"), 0.0)
     act_adj = {"Rulman / Parça Değişimi":0.6,"Yetkili Servis Onarımı":0.9,"Fonksiyon Testi / Tolerans İçi":-0.8,"Bakım & Yağlama":-1.1,"Cihaz İade Edilmedi":-1.5}.get(map_engineering_action(row), 0.0)
@@ -416,11 +285,16 @@ def build_fr66_pdf(form_data: dict) -> bytes:
 
 DETAIL_CSS = """
 <style>
+.block-container:has(.k360-detail-marker) [role="radiogroup"] strong {
+    font-size: 25px !important;
+    font-weight: 700 !important;
+    color: #c44550 !important;
+}
 .block-container:has(.k360-detail-marker) { padding-top: 2.5rem; padding-bottom: 3rem; }
 .k360-detail-marker { display: none; }
 .k360-eyebrow { color: #64748b; font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin-bottom: .55rem; }
 .k360-hero { border: 1px solid rgba(100,116,139,.22); border-top: 3px solid #0284c7; border-radius: 16px; padding: 26px 28px; background: rgba(14,165,233,.035); margin-bottom: 18px; }
-.k360-hero h1 { font-size: 1.85rem; letter-spacing: -.04em; line-height: 1.2; margin: 0; padding: 0; color: inherit; }
+.k360-hero h1 { font-size: 1.85rem; letter-spacing: -.04em; line-height: 1.2; margin: 0; padding: 0; color: #075985; }
 .k360-hero-product { font-size: 1.05rem; font-weight: 600; margin-top: 12px; overflow-wrap: anywhere; }
 .k360-hero-manufacturer { color: #64748b; font-size: .85rem; margin-top: 5px; overflow-wrap: anywhere; }
 .k360-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 20px; }
@@ -430,10 +304,12 @@ DETAIL_CSS = """
 .k360-badge.priority-high { background: #fffbeb; color: #92400e; border-color: #fde68a; }
 .k360-badge.priority-critical { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
 .k360-card { border: 1px solid rgba(100,116,139,.22); border-radius: 13px; padding: 22px 24px; margin: 4px 0 18px; background: rgba(100,116,139,.025); min-width: 0; }
-.k360-card h3 { font-size: 1rem; font-weight: 650; letter-spacing: -.015em; padding: 0; margin: 0 0 17px; color: inherit; }
+.k360-card h3 { font-size: 1rem; font-weight: 650; letter-spacing: -.015em; padding: 0; margin: 0 0 17px; color: #0369a1; }
+.k360-narrative.solution h3 { color: #0f766e; }
+.block-container:has(.k360-detail-marker) [data-testid="stHeading"] :is(h2, h3, h4, h5) { color: #0369a1; }
 .k360-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 24px; margin: 0; }
 .k360-field { min-width: 0; }
-.k360-field dt { color: #64748b; font-size: .76rem; font-weight: 500; margin-bottom: 6px; }
+.k360-field dt { color: #3b7293; font-size: .76rem; font-weight: 500; margin-bottom: 6px; }
 .k360-field dd { margin: 0; font-size: .9rem; font-weight: 550; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap; }
 .k360-field.wide { grid-column: 1 / -1; }
 .k360-score-line { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; margin: 20px 0 8px; }
@@ -534,16 +410,18 @@ def render(user):
 
     saved_models = get_saved_models()
     curr_model = extract_model_code(d.get("product"), d.get("findings"), saved_models)
-    curr_cause = resolve_smart_root_cause(d)
+    current_failure = classify_failure(d)
+    curr_cause = current_failure.subtype
+    curr_group = current_failure.group
     curr_validity = classify_validity(d)
 
-    all_data = complaints()
+    all_data = annotate_failures(complaints())
     exact_match_df = same_model_df = same_cause_df = past_data = pd.DataFrame()
     if not all_data.empty:
         past_data = all_data[all_data["id"] != int(cid)].copy()
         if not past_data.empty:
             past_data["Model_Kodu"] = past_data.apply(lambda r: extract_model_code(r.get("product"), r.get("findings"), saved_models), axis=1)
-            past_data["Hata_Nedeni"] = past_data.apply(resolve_smart_root_cause, axis=1)
+            past_data["Hata_Nedeni"] = past_data["Alt Arıza Türü"]
             past_data["Şikâyet Doğruluğu"] = past_data.apply(classify_validity, axis=1)
             same_model_df = past_data[past_data["Model_Kodu"] == curr_model]
             same_cause_df = past_data[past_data["Hata_Nedeni"] == curr_cause]
@@ -601,6 +479,22 @@ def render(user):
                 f'<div class="k360-note">NLP: {s_score:+.2f} · {_detail_value(p_reason)}</div>'
             )
             st.markdown(risk_fields.replace('</section>', score_html + '</section>'), unsafe_allow_html=True)
+
+        failure_info = current_failure.to_record()
+        st.markdown(_detail_fields("Arıza sınıflandırması", [
+            ("Ana arıza grubu", curr_group, False),
+            ("Birincil alt arıza türü", curr_cause, False),
+            ("Ek bulgular", failure_info["Ek Bulgular"], True),
+            ("Birincil etiketin kaynağı", current_failure.source, False),
+            ("Kök neden durumu", current_failure.cause_status, False),
+            ("Rapordaki neden açıklaması", current_failure.cause_statement or "Belirtilmemiş", True),
+        ]), unsafe_allow_html=True)
+        st.caption("Bu alan arıza bulgularını sınıflandırır; kesin kök neden kanıtı değildir. Bildirim ile üretici raporunun kaynakları ayrı gösterilir.")
+        with st.expander("Sınıflandırma dayanaklarını göster"):
+            if not current_failure.findings:
+                st.info("Belirli bir arızayı destekleyen metin bulunamadı.")
+            for finding in current_failure.findings:
+                _detail_text(f"{finding.subtype} — {finding.source}", finding.evidence)
 
         if not has_translation and (raw_desc != "FDA vaka metni belirtilmemiş." or raw_plan != "Üretici inceleme/servis raporu henüz girilmemiş."):
             col_btn, _ = st.columns([1, 2])
@@ -679,12 +573,13 @@ def render(user):
 
             st.markdown(
                 f'<div class="k360-profile"><span>İncelenen model: <strong>{_detail_value(curr_model)}</strong></span>'
-                f'<span>Hata tipi: <strong>{_detail_value(curr_cause)}</strong></span></div>',
+                f'<span>Grup: <strong>{_detail_value(curr_group)}</strong></span>'
+                f'<span>Alt arıza: <strong>{_detail_value(curr_cause)}</strong></span></div>',
                 unsafe_allow_html=True,
             )
 
             # Streamlit Markdown desteğiyle satır kırılımlı şık metinler
-            opt_tam = f"**Tam Eşleşme**  \nAynı Model ({curr_model}) VE  \nAynı Hata Tipi ({curr_cause})"
+            opt_tam = f"**Tam Eşleşme**  \nAynı Model ({curr_model}) VE  \nAynı Alt Arıza ({curr_cause})"
             opt_mod = f"**Model Havuzu**  \nSadece {curr_model} Modeline Ait  \nTüm Vakalar"
             opt_ari = f"**Arıza Havuzu**  \nTüm Modellerdeki '{curr_cause}' Vakaları"
 
@@ -756,7 +651,7 @@ def render(user):
                 similar_sorted = similar_pool.sort_values(by=["Benzerlik_Skoru", "id"], ascending=[False, False]).head(20)
                 similar_sorted["Eşleşme"] = similar_sorted["Benzerlik_Skoru"].apply(lambda s: f"%{s}")
                 similar_sorted["Gösterilen_Metin"] = similar_sorted.apply(lambda r: r["tr_description"] if pd.notna(r.get("tr_description")) and str(r.get("tr_description")).strip() else r["description"], axis=1)
-                detail_table = similar_sorted[["id","complaint_no","Eşleşme","Model_Kodu","Hata_Nedeni","Şikâyet Doğruluğu","Mühendislik_Aksiyonu","Hasarlı_Alt_Bileşen","Gösterilen_Metin"]].rename(columns={"id":"ID","complaint_no":"Şikâyet No","Model_Kodu":"Model","Hata_Nedeni":"Hata Tipi","Mühendislik_Aksiyonu":"Alınan Aksiyon","Hasarlı_Alt_Bileşen":"Hasarlı Parça","Gösterilen_Metin":"Şikâyet Metni"})
+                detail_table = similar_sorted[["id","complaint_no","Eşleşme","Model_Kodu","Hata_Nedeni","Şikâyet Doğruluğu","Mühendislik_Aksiyonu","Hasarlı_Alt_Bileşen","Gösterilen_Metin"]].rename(columns={"id":"ID","complaint_no":"Şikâyet No","Model_Kodu":"Model","Hata_Nedeni":"Alt Arıza Türü","Mühendislik_Aksiyonu":"Alınan Aksiyon","Hasarlı_Alt_Bileşen":"Hasarlı Parça","Gösterilen_Metin":"Şikâyet Metni"})
                 event = st.dataframe(detail_table, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
                 if hasattr(event, "selection") and event.selection.rows:
                     st.session_state.detail_id = int(detail_table.iloc[event.selection.rows[0]]["ID"]); st.rerun()

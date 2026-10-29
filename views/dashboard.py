@@ -1,3 +1,5 @@
+from failure_classifier import (classify_failure, annotate_failures, resolve_smart_root_cause, extract_root_cause, FAILURE_GROUPS, ALL_SUBTYPES, SUBTYPE_TO_GROUP, UNKNOWN_SUBTYPE, filter_failures, detect_failure_filter, legacy_failure_group)
+import hashlib
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -39,174 +41,9 @@ def get_saved_models():
     models = [c.strip().upper() for c in raw.split(",") if c.strip()]
     return models if models else ["EM800", "MR8-AF02"]
 
-def purge_unlisted_products(saved_models):
-    """Kayıtlı model numaraları (örn. EM800, MR8-AF02) dışında kalan tüm ürünleri veritabanından temizler."""
-    if not saved_models:
-        return
-    conditions = []
-    params = []
-    for m in saved_models:
-        conditions.append("(UPPER(product) LIKE ? OR UPPER(findings) LIKE ? OR UPPER(description) LIKE ?)")
-        params.extend([f"%{m}%", f"%{m}%", f"%{m}%"])
-    where_clause = " OR ".join(conditions)
-    with db() as conn:
-        conn.execute(f"DELETE FROM complaints WHERE NOT ({where_clause})", params)
-        conn.commit()
 
-def _clean_negations(text: str) -> str:
-    """Servis raporlarındaki 'no defect', 'no overheating' gibi negatif test ifadelerini temizler."""
-    t = str(text or "").lower()
-    if "medtronic submits this report" in t:
-        t = t.split("medtronic submits this report")[0]
-    neg_patterns = [
-        r"\bno\s+(?:overheating|heat|thermal|corrosion|rust|defect|failure|problem|fault|damage|noise|vibration|leak|leakage|short)\b",
-        r"\bdid\s+not\s+(?:overheat|fail|break|leak|malfunction)\b",
-        r"\bwithout\s+(?:overheating|damage|defect|issue)\b",
-        r"\bpassed\s+(?:all\s+)?(?:hipot|electrical|functional|temperature|thermal)\b",
-        r"\btemperature\s+was\s+measured\s+to\s+be\s+within\b",
-    ]
-    for pat in neg_patterns:
-        t = re.sub(pat, " ", t)
-    return t
 
-def extract_root_cause(text: str) -> str:
-    """Metin içerisinden genişletilmiş medikal ve endüstriyel anahtar kelimelerle kök neden çıkarır."""
-    t = str(text or "").lower().strip()
-    if not t or "fda maude kaydında olay metni belirtilmemiş" in t:
-        return "Diğer / Tanımlanamayan"
 
-    # 1. Aşırı Isınma / Termal Sapma
-    if any(k in t for k in [
-        "overheat", "over-heat", "hot", "extremely warm", "warm to touch", "thermal",
-        "temperature", "burn", "burned", "burnt", "scald", "heat", "cooling",
-        "ısınma", "ısındı", "sıcaklık", "sıcak", "termal", "yanık", "aşırı ısı"
-    ]):
-        return "Aşırı Isınma"
-
-    # 2. Fiziksel Kırılma / Parça Kopması / Çatlak
-    if any(k in t for k in [
-        "break", "broke", "broken", "crack", "cracked", "fracture", "fractured",
-        "snap", "snapped", "shatter", "split", "severed", "sheared", "chipped",
-        "detach", "detached", "detachment", "separat", "came apart", "fell apart",
-        "fell off", "dislodg", "fragment", "piece broke", "bent", "deform", "dent",
-        "tip broke", "bur broke", "burr broke", "flute broke", "leg broke", "footplate broke",
-        "kırık", "kırıl", "çatlak", "çatla", "koptu", "kopma", "ayrıl", "parçalan", "yamul", "ezil"
-    ]):
-        return "Fiziksel Kırılma / Çatlak"
-
-    # 3. Rulman / Mekanik Aşınma & Bakım Eksikliği
-    if any(k in t for k in [
-        "bearing", "worn", "wear", "rulman", "bilya", "aşınma", "aşındı", "dağılma",
-        "preventive maintenance", "inadequate maintenance", "lack of maintenance",
-        "lubricat", "grease", "oiling", "friction", "spindle", "rotor", "shaft worn",
-        "vane", "gear worn", "scoring", "galling", "rubbing", "fatigue", "overhaul",
-        "bakım eksik", "yağlama", "mekanik yıpranma", "mil aşın"
-    ]):
-        return "Rulman / Mekanik Aşınma"
-
-    # 4. Mekanik Sıkışma / Pens / Uç Kilitlenmesi
-    if any(k in t for k in [
-        "stuck", "collet", "sıkışma", "sıkıştı", "kilitlen", "pens", "seized", "seizure",
-        "jam", "jammed", "bind", "binding", "locked", "lock", "unlock", "chuck", "detent",
-        "hold the bur", "hold the tool", "doesn't hold", "did not hold", "would not hold",
-        "not hold", "slip", "slipped", "slipping", "bur came out", "burr came out",
-        "insert", "insertion", "unable to remove", "difficult to remove", "removal",
-        "extract", "release", "attach", "connect", "disconnect", "disassembl", "assembl",
-        "fit", "seat", "seated", "engage", "thread", "stripped", "unscrew", "tight", "stiff",
-        "takılamadı", "çıkarılamadı", "uç tutmuyor", "uç sıkıştı"
-    ]):
-        return "Mekanik Sıkışma / Kilitlenme"
-
-    # 5. Anormal Ses / Salgı / Titreşim
-    if any(k in t for k in [
-        "noise", "noisy", "ses", "rough", "vibrat", "titreşim", "vibrasyon",
-        "wobbl", "runout", "run-out", "eccentric", "salgı", "yalpalama",
-        "chatter", "rattl", "grind", "squeal", "whine", "screech", "loud",
-        "audible", "unbalanced", "unstable", "jumping", "skipping"
-    ]):
-        return "Anormal Ses / Titreşim"
-
-    # 6. Kablo / Hortum / Bağlantı Temassızlığı
-    if any(k in t for k in [
-        "cable", "wire", "wiring", "cord", "kablo", "temassız", "connector",
-        "plug", "pin", "socket", "receptacle", "hose", "tube", "tubing",
-        "pneumatic", "air leak", "hava kaçağı", "frayed", "exposed wire",
-        "strain relief", "kink", "pedal", "footswitch", "footpedal", "handpiece cord",
-        "konnektör", "soket", "bağlantı kopuk"
-    ]):
-        return "Kablo / Temassızlık"
-
-    # 7. Elektriksel Hata / Kaçak / Elektronik Arıza
-    if any(k in t for k in [
-        "hipot", "hi-pot", "shock", "electrical", "electric", "kaçak", "elektrik",
-        "short circuit", "shorted", "open circuit", "current", "voltage", "ground",
-        "insulation", "dielectric", "spark", "arc", "arcing", "smoke", "smell", "odor",
-        "fuse", "board", "pcb", "sensor", "hall", "stator", "coil", "winding",
-        "resistance", "ohm", "error code", "fault code", "alarm", "console error",
-        "kısa devre", "izolasyon", "sensör", "stator", "bobin", "hata kodu"
-    ]):
-        return "Elektriksel Hata / Kaçak"
-
-    # 8. Korozyon / Oksitlenme / Sızdırmazlık
-    if any(k in t for k in [
-        "corrosion", "corroded", "corros", "oksit", "pas", "paslanma", "rust", "rusted",
-        "oxid", "pitting", "pitted", "stain", "discolor", "faded", "peel", "peeling",
-        "flak", "coating", "anodiz", "autoclave", "steriliz", "washer", "chemical",
-        "moisture", "water ingress", "fluid ingress", "seal", "o-ring", "gasket",
-        "leak", "leaking", "sızdırma", "korozyon", "sterilizasyon"
-    ]):
-        return "Korozyon / Oksitlenme"
-
-    # 9. Ani Durma / Çalışmama / Fonksiyon & Güç Kaybı
-    if any(k in t for k in [
-        "stop", "stopped", "stopping", "not work", "did not work", "does not work",
-        "would not work", "failed to work", "failed to run", "would not run",
-        "did not run", "not run", "fail to operate", "failed to operate",
-        "did not operate", "would not operate", "inoperative", "non-functional",
-        "not function", "failed to function", "ceased", "cut out", "shut off",
-        "shut down", "turn on", "power on", "would not start", "did not start",
-        "spin", "rotate", "rotation", "no rotation", "slow", "weak", "low power",
-        "loss of power", "no power", "lack of power", "torque", "rpm", "speed",
-        "stall", "stalled", "stalling", "intermittent", "hesitat", "dead",
-        "malfunction", "defective", "failed during", "failure",
-        "çalışmı", "çalışmadı", "durdu", "dönmüyor", "devir", "güç kaybı", "kesinti", "arızalandı"
-    ]):
-        return "Ani Durma / Çalışmama"
-
-    return "Diğer / Tanımlanamayan"
-
-def resolve_smart_root_cause(row) -> str:
-    """
-    3 Aşamalı Akıllı Kök Neden Çözümleyici:
-    1) Önce müşteri şikâyet metnini (description + tr_description) analiz eder.
-    2) Bulunamazsa üretici servis raporunu (action_plan + tr_action_plan + root_cause) negatif ifadeleri temizleyerek analiz eder.
-    3) Hâlâ bulunamazsa parça/bağlam ipuçlarından (bur/attachment/motor/service) akıllı çıkarım yapar.
-    """
-    # Aşama 1: Müşteri Şikâyeti
-    desc_combined = f"{row.get('description') or ''} {row.get('tr_description') or ''}"
-    cause = extract_root_cause(desc_combined)
-    if cause != "Diğer / Tanımlanamayan":
-        return cause
-
-    # Aşama 2: Üretici Teknik Servis Raporu & Kök Neden Sütunu
-    rc_raw = f"{row.get('root_cause') or ''} {row.get('action_plan') or ''} {row.get('tr_action_plan') or ''}"
-    rc_cleaned = _clean_negations(rc_raw)
-    cause = extract_root_cause(rc_cleaned)
-    if cause != "Diğer / Tanımlanamayan":
-        return cause
-
-    # Aşama 3: Bağlamsal Yedek Çıkarım (Contextual Fallback)
-    full_context = f"{desc_combined} {rc_cleaned} {row.get('findings') or ''}".lower()
-    if any(k in full_context for k in ["bur", "burr", "attachment", "footplate", "guard", "hood", "collet", "tube", "chuck", "sleeve"]):
-        return "Mekanik Sıkışma / Kilitlenme"
-    if any(k in full_context for k in ["service", "repaired", "replaced", "overhaul", "rebuild", "maintenance", "worn", "age", "wear"]):
-        return "Rulman / Mekanik Aşınma"
-    if any(k in full_context for k in ["damage", "damaged", "broken", "fracture", "bent", "dent", "missing", "tip"]):
-        return "Fiziksel Kırılma / Çatlak"
-    if any(k in full_context for k in ["malfunction", "injury", "test", "evaluated", "evaluation", "handpiece", "motor", "drill"]):
-        return "Ani Durma / Çalışmama"
-
-    return "Diğer / Tanımlanamayan"
 
 def resolve_model_group(row, saved_models):
     prod = str(row.get("product") or "").upper()
@@ -235,8 +72,7 @@ def render():
 
     saved_models = get_saved_models()
     
-    # Kayıtlı modeller dışındaki tüm ürünleri veritabanından temizle
-    purge_unlisted_products(saved_models)
+    # Model seçimi yalnızca görünümü filtreler; veri silmez.
 
     df = complaints()
     
@@ -262,7 +98,8 @@ def render():
         return st.info("Sistemde henüz analiz edilecek bir şikâyet verisi bulunmuyor. Veri Aktarımı sayfasından modelleri güncelleyebilirsiniz.")
 
     df["Şikâyet Doğruluğu"] = df.apply(classify_validity, axis=1)
-    df["Hata Nedeni"] = df.apply(resolve_smart_root_cause, axis=1)
+    df = annotate_failures(df)
+    df["Hata Nedeni"] = df["Alt Arıza Türü"]
     df["Ürün Grubu"] = df.apply(lambda r: resolve_model_group(r, saved_models), axis=1)
 
     # Sadece kayıtlı modellere ait satırları tut
@@ -285,17 +122,37 @@ def render():
         product_df = df
         manufacturer = "Çoklu Üretici / Tüm Tesis"
 
+    if product_df.empty:
+        return st.info("Seçilen model ve zaman aralığında kayıt bulunmuyor.")
+    st.caption("Arıza türleri; şikâyet metni ve üretici raporundaki bulgulardan sınıflandırılır. Kesin kök neden tespiti ayrıca değerlendirilir.")
+    f_group, f_level, f_scope = st.columns([2, 2, 2])
+    group_options = ["Tüm arıza grupları"] + list(FAILURE_GROUPS)
+    selected_group = f_group.selectbox("Ana arıza grubu", group_options, key="failure_group_filter")
+    detail_level = f_level.selectbox("Dağılım düzeyi", ["Alt arıza türü", "Ana arıza grubu"], key="failure_level")
+    scope_mode = f_scope.selectbox("Sayım kapsamı", ["Birincil arıza", "Tüm bulgular"], key="failure_scope")
+    def distribution_labels(row):
+        labels = row["_failure_labels"] if scope_mode == "Tüm bulgular" else (row["Alt Arıza Türü"],)
+        if selected_group != "Tüm arıza grupları":
+            labels = tuple(x for x in labels if SUBTYPE_TO_GROUP[x] == selected_group)
+        if detail_level == "Ana arıza grubu":
+            labels = tuple(SUBTYPE_TO_GROUP[x] for x in labels)
+        return tuple(dict.fromkeys(labels))
+    product_df = product_df.copy()
+    product_df["_distribution_labels"] = product_df.apply(distribution_labels, axis=1)
+    product_df = product_df[product_df["_distribution_labels"].map(bool)]
+    chart_context = "|".join([selected_product, selected_time, selected_group, detail_level, scope_mode])
+    chart_key = "reason_chart_" + hashlib.sha256(chart_context.encode()).hexdigest()[:12]
     selected_reason = None
-    chart_state = st.session_state.get("reason_chart_select")
-    if chart_state and isinstance(chart_state, dict):
+    chart_state = st.session_state.get(chart_key)
+    if chart_state:
         points = chart_state.get("selection", {}).get("points", [])
         if points:
             selected_reason = points[0].get("y")
-            if selected_reason not in product_df["Hata Nedeni"].values:
+            if not product_df["_distribution_labels"].map(lambda labels: selected_reason in labels).any():
                 selected_reason = None
 
     if selected_reason:
-        kpi_df = product_df[product_df["Hata Nedeni"] == selected_reason]
+        kpi_df = product_df[product_df["_distribution_labels"].map(lambda labels: selected_reason in labels)]
         st.info(f"🔍 **Dinamik Filtre Devrede:** Sadece **{selected_reason}** vakaları analiz ediliyor. Tümünü görmek için grafikte boş bir yere tıklayın.")
         kpi_subtitle = f"Filtre: {selected_reason}"
     else:
@@ -340,10 +197,16 @@ def render():
             st.info("Trend çizecek yeterli veri yok.")
         
     with c2:
-        st.markdown("##### 🧩 Şikâyet / Hata Nedenleri Dağılımı")
-        st.caption("💡 Etkileşimli: Detayını görmek istediğiniz arızanın çubuğuna tıklayın.")
+        st.markdown(f"##### Arıza Dağılımı — {detail_level.title()}")
+        st.caption("Detayını görmek istediğiniz arızanın çubuğuna tıklayın.")
+        if scope_mode == "Tüm bulgular":
+            st.caption(f"{len(product_df)} tekil vaka. Her bulgu vaka başına bir kez sayılır; aynı vakada birden çok bulgu olabileceği için toplam, vaka sayısını aşabilir. Bildirilen belirtiler de kaynaklarıyla birlikte kapsanır.")
+        else:
+            st.caption("Her vaka yalnızca birincil alt arıza türünde sayılır. Ek bulgular için 'Tüm bulgular' kapsamını seçebilirsiniz.")
         
-        reason_df = product_df.groupby("Hata Nedeni").size().reset_index(name="Adet").sort_values("Adet", ascending=True)
+        reason_rows = product_df[["id", "_distribution_labels"]].explode("_distribution_labels").dropna()
+        reason_rows = reason_rows.drop_duplicates(["id", "_distribution_labels"])
+        reason_df = reason_rows.groupby("_distribution_labels").size().reset_index(name="Adet").rename(columns={"_distribution_labels": "Hata Nedeni"}).sort_values(["Adet", "Hata Nedeni"], ascending=[True, False])
         fig_reasons = px.bar(reason_df, x="Adet", y="Hata Nedeni", orientation='h', text="Adet")
         
         if selected_reason:
@@ -352,23 +215,41 @@ def render():
         else:
             fig_reasons.update_traces(marker_color="#6366f1", textposition="outside")
             
-        fig_reasons.update_layout(xaxis_title="", yaxis_title="", margin=dict(l=10, r=10, t=10, b=10), height=320, clickmode='event+select')
-        st.plotly_chart(fig_reasons, use_container_width=True, on_select="rerun", key="reason_chart_select")
+        fig_reasons.update_layout(xaxis_title="", yaxis_title="", margin=dict(l=10, r=10, t=10, b=10), height=max(340, len(reason_df) * 30), clickmode='event+select')
+        st.plotly_chart(fig_reasons, use_container_width=True, on_select="rerun", key=chart_key)
 
     st.divider()
 
-    st.markdown("##### 📊 Kök Neden Pareto Analizi (80/20 Kuralı)")
-    st.caption("Kalite problemlerinin %80'inin, nedenlerin %20'sinden kaynaklandığını tespit eden endüstriyel Pareto grafiği.")
+    st.markdown("##### Arıza Pareto Analizi (80/20)")
+    st.caption("Seçilen sayım kapsamındaki arızaların kümülatif payı gösterilir. %80 çizgisi referanstır; 80/20 oranının sağlandığı varsayılmaz. Tüm bulgular kapsamında oranlar vaka toplamına değil, bulgu toplamına göredir.")
     
-    pareto_data = product_df['Hata Nedeni'].value_counts().reset_index()
-    pareto_data.columns = ['Hata Nedeni', 'Adet']
+    pareto_data = reason_df.sort_values(["Adet", "Hata Nedeni"], ascending=[False, True]).reset_index(drop=True).copy()
     pareto_data['Kümülatif %'] = (pareto_data['Adet'].cumsum() / pareto_data['Adet'].sum()) * 100
 
     fig_pareto = go.Figure()
     fig_pareto.add_trace(go.Bar(x=pareto_data['Hata Nedeni'], y=pareto_data['Adet'], name='Vaka Sayısı', marker_color='#cbd5e1', hovertemplate='Kök Neden: %{x}<br>Vaka Sayısı: %{y}<extra></extra>'))
     fig_pareto.add_trace(go.Scatter(x=pareto_data['Hata Nedeni'], y=pareto_data['Kümülatif %'], name='Kümülatif %', yaxis='y2', mode='lines+markers', line=dict(color='#ef4444', width=3), marker=dict(size=8, color='#ef4444', line=dict(width=2, color='white')), hovertemplate='Kümülatif: %{y:.1f}%<extra></extra>'))
     fig_pareto.add_hline(y=80, line_dash="dash", line_color="rgba(239, 68, 68, 0.5)", yref="y2", annotation_text="%80 Kritik Eşik", annotation_position="top left")
+    oranlar = pareto_data["Kümülatif %"].tolist()
+    i = next(i for i, oran in enumerate(oranlar) if oran >= 80)
 
+    if i == 0:
+        x_kesisim = 0
+    else:
+        x_kesisim = i - 1 + (
+            (80 - oranlar[i - 1]) / (oranlar[i] - oranlar[i - 1])
+        )
+
+    fig_pareto.add_shape(
+        type="line",
+        xref="x",
+        yref="y2",
+        x0=x_kesisim,
+        x1=x_kesisim,
+        y0=0,
+        y1=80,
+        line=dict(color="#ef4444", width=2, dash="dash")
+    )
     fig_pareto.update_layout(
         height=450, margin=dict(l=10, r=10, t=20, b=10), plot_bgcolor='rgba(0,0,0,0)', hovermode='x unified', showlegend=False,
         yaxis=dict(title='Vaka Adedi', showgrid=False), yaxis2=dict(title='Kümülatif Etki (%)', overlaying='y', side='right', range=[0, 105], showgrid=False)

@@ -72,7 +72,7 @@ st.markdown("""<style>
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
 
-    /* 4. Şık Menü Sekme Butonları (Yuvarlak Noktasız, Sola Hizalı, Net Yazılı) */
+    /* 4. Menü Sekmeleri ve Aktif Sayfa Göstergesi */
     [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
         gap: 6px !important;
     }
@@ -152,6 +152,32 @@ st.markdown("""<style>
         text-align: left !important;
     }
 
+    /* Boş halka: diğer sayfalar. Dolu mavi halka: seçili sayfa. */
+    [data-testid="stSidebar"] button[kind="secondary"],
+    [data-testid="stSidebar"] button[kind="primary"] {
+        gap: 12px !important;
+    }
+    [data-testid="stSidebar"] button[kind="secondary"]::before,
+    [data-testid="stSidebar"] button[kind="primary"]::before {
+        content: "";
+        display: block;
+        flex: 0 0 10px;
+        width: 10px;
+        height: 10px;
+        box-sizing: border-box;
+        border: 2px solid #7399b3;
+        border-radius: 50%;
+        background: transparent;
+    }
+    [data-testid="stSidebar"] button[kind="primary"]::before {
+        background: #0369a1;
+        border-color: #0369a1;
+        box-shadow: 0 0 0 4px rgba(3, 105, 161, 0.14);
+    }
+    [data-testid="stSidebar"] button[kind="secondary"]:hover::before {
+        border-color: #0369a1;
+    }
+
     /* 5. Alt Ayırıcı Çizgi ve Çıkış Yap Butonu */
     .sidebar-bottom-divider {
         border-top: 1px solid rgba(0, 0, 0, 0.1);
@@ -171,6 +197,9 @@ st.markdown("""<style>
     }
     [data-testid="stSidebar"] .st-key-btn_logout_sidebar button > div {
         justify-content: center !important;
+    }
+    [data-testid="stSidebar"] .st-key-btn_logout_sidebar button::before {
+        display: none;
     }
     [data-testid="stSidebar"] .st-key-btn_logout_sidebar button p {
         color: #b91c1c !important;

@@ -1,3 +1,4 @@
+from failure_classifier import (classify_failure, annotate_failures, resolve_smart_root_cause, extract_root_cause, FAILURE_GROUPS, ALL_SUBTYPES, SUBTYPE_TO_GROUP, UNKNOWN_SUBTYPE, filter_failures, detect_failure_filter, legacy_failure_group)
 import re
 import difflib
 import streamlit as st
@@ -155,7 +156,8 @@ def _extract_nlp_filters(prompt: str, df: pd.DataFrame) -> dict:
     q_ascii = _ascii_fold(prompt)
     filtered = df.copy()
     filtered["dt"] = pd.to_datetime(filtered["created_at"], format="mixed", errors="coerce")
-    filtered["cause_class"] = filtered["description"].apply(_extract_cause)
+    filtered = annotate_failures(filtered)
+    filtered["cause_class"] = filtered["Alt Arıza Türü"]
 
     active_filters = []
     current_memory = {}
@@ -270,25 +272,11 @@ def _extract_nlp_filters(prompt: str, df: pd.DataFrame) -> dict:
     # Eğer kullanıcı "pareto analizi nedir" gibi genel bir soru soruyorsa tüm veritabanını koru
     is_conceptual_pareto = "pareto" in q_ascii and any(w in q_ascii for w in ["nedir", "ne demek", "nasil", "analizi"])
     if not is_conceptual_pareto:
-        cause_keywords_map = [
-            (["aşırı ısınma", "ısınma", "sıcaklık", "termal", "overheat", "ısınıyor", "isinma", "sicaklik"], "Aşırı Isınma / Termal Sapma"),
-            (["rulman", "aşınma", "bilya", "bearing", "worn", "asinma"], "Rulman / Mekanik Aşınma"),
-            (["sıkışma", "kilitlen", "pens", "collet", "uç çıkmıyor", "uç takıl", "sikisma"], "Mekanik Sıkışma / Pens Kilitlenmesi"),
-            (["kablo", "temassız", "konnektör", "kopuk kablo", "temassiz"], "Kablo / Bağlantı Temassızlığı"),
-            (["korozyon", "oksit", "paslanma", "pas "], "Korozyon / Oksitlenme"),
-            (["elektrik kaçağı", "kaçak akım", "hipot", "izolasyon", "çarpması", "kıvılcım", "kacak"], "Elektriksel Kaçak / İzolasyon"),
-            (["ani durma", "çalışmıyor", "çalışmadı", "durdu", "fonksiyon kaybı", "calismiyor"], "Ani Durma / Fonksiyon Kaybı"),
-            (["anormal ses", "titreşim", "gürültü", "ses yapıyor", "vibrasyon", "salgı", "titresim"], "Anormal Ses / Titreşim"),
-            (["kırılma", "kırık", "çatlak", "koptu", "kopma", "parça kırıl", "kirik", "catlak", "kirilma"], "Fiziksel Kırılma / Çatlak"),
-            (["ölçü", "tolerans", "çap", "boyut", "olcu"], "Ölçü / Tolerans Uygunsuzluğu"),
-            (["teslimat", "sevkiyat", "paketleme", "ambalaj", "geç teslim"], "Sevkiyat / Paketleme Problemi"),
-        ]
-        for kw_list, cause_label in cause_keywords_map:
-            if _fuzzy_has(q, kw_list, threshold=0.84):
-                filtered = filtered[filtered["cause_class"] == cause_label]
-                active_filters.append(f"Arıza Tipi: {cause_label}")
-                current_memory["cause_class"] = cause_label
-                break
+        cause_label = detect_failure_filter(prompt)
+        if cause_label:
+            filtered = filter_failures(filtered, cause_label)
+            active_filters.append(f"Arıza Tipi: {cause_label}")
+            current_memory["cause_class"] = cause_label
 
     for cat in ["Ürün Kalitesi", "Ölçü / Tolerans", "Yüzey Hatası", "Teslimat", "Paketleme", "Hizmet"]:
         if _ascii_fold(cat) in q_ascii and "Arıza Tipi:" not in " ".join(active_filters):
@@ -366,7 +354,7 @@ def _extract_nlp_filters(prompt: str, df: pd.DataFrame) -> dict:
             filtered = filtered[filtered["customer"] == last_mem["customer"]]
             active_filters.append(f"Önceki Bağlam (Müşteri): {last_mem['customer']}")
         if last_mem.get("cause_class"):
-            filtered = filtered[filtered["cause_class"] == last_mem["cause_class"]]
+            filtered = filter_failures(filtered, last_mem["cause_class"])
             active_filters.append(f"Önceki Bağlam (Arıza): {last_mem['cause_class']}")
 
     if current_memory:

@@ -1,3 +1,4 @@
+from failure_classifier import (classify_failure, annotate_failures, resolve_smart_root_cause, extract_root_cause, FAILURE_GROUPS, ALL_SUBTYPES, SUBTYPE_TO_GROUP, UNKNOWN_SUBTYPE, filter_failures, detect_failure_filter, legacy_failure_group)
 import json
 import streamlit as st
 import pandas as pd
@@ -171,31 +172,10 @@ def is_user_authorized(user: dict) -> tuple[bool, str]:
     return True, "Yetkili"
 
 
+
+
 def _extract_cause(text):
-    t = str(text or "").lower()
-    if any(k in t for k in ["overheat", "hot", "ısınma", "isinma", "temperature", "sıcaklık", "sicaklik"]):
-        return "Aşırı Isınma / Termal Sapma"
-    if any(k in t for k in ["bearing", "worn", "aşınma", "asinma", "rulman", "bilya"]):
-        return "Rulman / Mekanik Aşınma"
-    if any(k in t for k in ["stuck", "collet", "sıkışma", "sikisma", "kilitlen", "pens"]):
-        return "Mekanik Sıkışma / Pens Kilitlenmesi"
-    if any(k in t for k in ["cable", "wire", "kablo", "temassız", "temassiz"]):
-        return "Kablo / Bağlantı Temassızlığı"
-    if any(k in t for k in ["corrosion", "corroded", "oksit", "pas"]):
-        return "Korozyon / Oksitlenme"
-    if any(k in t for k in ["leak", "hipot", "shock", "kaçak", "kacak", "elektrik"]):
-        return "Elektriksel Kaçak / İzolasyon"
-    if any(k in t for k in ["stop", "not work", "çalışmı", "calismi", "durdu"]):
-        return "Ani Durma / Fonksiyon Kaybı"
-    if any(k in t for k in ["noise", "ses", "rough", "titreşim", "titresim"]):
-        return "Anormal Ses / Titreşim"
-    if any(k in t for k in ["break", "broken", "cracked", "kırık", "kirik", "çatlak", "catlak", "koptu"]):
-        return "Fiziksel Kırılma / Çatlak"
-    if any(k in t for k in ["tolerans", "ölçü", "olcu", "çap", "cap", "boyut"]):
-        return "Ölçü / Tolerans Uygunsuzluğu"
-    if any(k in t for k in ["teslim", "gecik", "paket", "ambalaj"]):
-        return "Sevkiyat / Paketleme Problemi"
-    return "Teknik Performans Bildirimi"
+    return extract_root_cause(text)
 
 
 def _is_meaningful_field(val: str, ignore_phrases=None) -> bool:
@@ -303,7 +283,7 @@ def inspect_complaint_context(item: dict) -> dict:
     else:
         auto_purpose = RESPONSE_PURPOSES[2]
 
-    verified_issue_topic = _extract_cause(desc_text)
+    verified_issue_topic = classify_failure(item).subtype
     verified_findings_clean = ""
     if has_findings:
         if "Olay Türü:" in findings_text and "|" in findings_text:

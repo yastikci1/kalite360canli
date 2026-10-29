@@ -1,3 +1,4 @@
+from failure_classifier import (classify_failure, annotate_failures, resolve_smart_root_cause, extract_root_cause, FAILURE_GROUPS, ALL_SUBTYPES, SUBTYPE_TO_GROUP, UNKNOWN_SUBTYPE, filter_failures, detect_failure_filter, legacy_failure_group)
 import json
 import re
 import base64
@@ -13,31 +14,10 @@ from utils import classify_validity
 
 
 # --- 1. YARDIMCI METİN VE MODEL ÇÖZÜMLEYİCİLER ---
+
+
 def extract_failure_mode(complaint_text: str, analysis_text: str = "") -> str:
-    t = f"{complaint_text or ''} {analysis_text or ''}".lower()
-    
-    if any(k in t for k in ["detach", "break", "broken", "crack", "fracture", "snapped", "kırık", "çatlak", "koptu", "kopma", "ayrılma", "dents"]):
-        return "Fiziksel Kırılma / Parça Kopması"
-    if any(k in t for k in ["bearing", "worn", "wear", "aşınma", "rulman", "bilya", "dağılma", "preventive maintenance"]):
-        return "Rulman / Mekanik Aşınma"
-    if any(k in t for k in ["stuck", "collet", "sıkışma", "kilitlen", "pens", "hold the burr", "doesn't hold", "insert", "assembly difficulty", "takılamadı", "unscrewed", "separated", "lock"]):
-        return "Mekanik Sıkışma / Uç Takılamaması"
-    if any(k in t for k in ["noise", "ses", "rough", "titreşim", "vibrasyon", "wobbl", "unstable", "yalpalama"]):
-        return "Anormal Ses / Salgı / Titreşim"
-    if any(k in t for k in ["overheat", "hot", "thermal", "ısınma", "sıcaklık", "termal", "burn"]):
-        return "Aşırı Isınma / Termal Sapma"
-    if any(k in t for k in ["corros", "corroded", "rust", "oksit", "pas", "faded", "discolor"]):
-        return "Korozyon / Oksitlenme"
-    if any(k in t for k in ["cable", "wire", "kablo", "temassız", "konnektör"]):
-        return "Kablo / Bağlantı Temassızlığı"
-    if any(k in t for k in ["leak", "hipot", "shock", "kaçak", "elektrik", "short circuit"]):
-        return "Elektriksel Kaçak / İzolasyon Hatası"
-    if any(k in t for k in ["stop", "not work", "fail to run", "çalışmı", "durdu"]):
-        return "Ani Durma / Fonksiyon Kaybı"
-    if any(k in t for k in ["tolerans", "ölçü", "çap", "boyut", "kalibrasyon"]):
-        return "Ölçü / Tolerans Uygunsuzluğu"
-        
-    return "Diğer / Tanımlanamayan"
+    return classify_failure({"description": complaint_text, "action_plan": analysis_text}).subtype
 
 
 def determine_complaint_validity(analysis_text: str) -> str:
@@ -101,7 +81,8 @@ def scan_similar_complaints(model_query: str = "", failure_query: str = "", base
         return {"empty": True, "count": 0}
 
     df = df.copy()
-    df["Hata_Modu"] = df["description"].apply(extract_failure_mode)
+    df = annotate_failures(df)
+    df["Hata_Modu"] = df["Alt Arıza Türü"]
     df["Dogruluk"] = df.apply(classify_validity, axis=1)
 
     target_model = (model_query or "").strip().upper()
@@ -113,7 +94,7 @@ def scan_similar_complaints(model_query: str = "", failure_query: str = "", base
         target_model = m_paren.group(1).strip().upper() if m_paren else prod_raw.split()[0].upper() if prod_raw else ""
 
     if base_complaint and not target_failure:
-        target_failure = extract_failure_mode(base_complaint.get("description", ""))
+        target_failure = classify_failure(base_complaint).subtype
 
     filtered = df
     if target_model:
@@ -122,13 +103,12 @@ def scan_similar_complaints(model_query: str = "", failure_query: str = "", base
             df["description"].astype(str).str.upper().str.contains(re.escape(target_model), na=False) |
             df["findings"].astype(str).str.upper().str.contains(re.escape(target_model), na=False)
         )
-        if mask_m.any():
-            filtered = df[mask_m]
+        filtered = df[mask_m]
 
     if target_failure and target_failure != "Genel / Sınıflandırılmamış Arıza":
-        mask_f = filtered["Hata_Modu"] == target_failure
-        if mask_f.any():
-            filtered = filtered[mask_f]
+        filtered = filter_failures(filtered, target_failure)
+    if filtered.empty:
+        return {"empty": True, "count": 0}
 
     total_matched = len(filtered)
     confirmed_df = filtered[filtered["Dogruluk"] == "Şikâyet Doğru"]
@@ -204,9 +184,9 @@ def generate_6m_root_cause_analysis(query_text: str = "", base_complaint: dict =
         if m_mod:
             detected_model = m_mod.group(1).upper()
 
-    detected_failure = failure_override if failure_override else (extract_failure_mode(query_text) if query_text else "")
-    if detected_failure in ["Genel / Sınıflandırılmamış Arıza", "Diğer / Tanımlanamayan"] and base_complaint:
-        detected_failure = extract_failure_mode(base_complaint.get("description", ""))
+    detected_failure = failure_override if failure_override else (detect_failure_filter(query_text) if query_text else "")
+    if detected_failure in ["", UNKNOWN_SUBTYPE, "Genel / Sınıflandırılmamış Arıza", "Diğer / Tanımlanamayan"] and base_complaint:
+        detected_failure = classify_failure(base_complaint).subtype
 
     scan = scan_similar_complaints(detected_model, detected_failure, base_complaint)
     if scan.get("empty") or scan.get("total_matched", 0) == 0:
@@ -373,7 +353,7 @@ def generate_capa_or_8d_draft(
     root_cause = str(complaint_row.get("root_cause") or "").strip()
     action_plan = str(complaint_row.get("tr_action_plan") or complaint_row.get("action_plan") or "").strip()
 
-    fail_mode = extract_failure_mode(desc)
+    fail_mode = classify_failure(complaint_row).subtype
     scan = scan_similar_complaints(base_complaint=complaint_row)
     similar_cnt = scan.get("total_matched", 1)
     confirmed_cnt = scan.get("confirmed_cnt", 0)
@@ -759,19 +739,7 @@ def render_quality_engine_tab(user: dict):
         c_m1, c_m2 = st.columns(2)
         default_mod = str(current_item.get("product") or "").split()[0].upper()
         mod_input = c_m1.text_input("Model Filtresi (Opsiyonel):", value=default_mod, key="qe_6m_model")
-        fail_opts = [
-            "Otomatik (Şikâyetten Algıla)",
-            "Rulman / Mekanik Aşınma",
-            "Fiziksel Kırılma / Parça Kopması",
-            "Mekanik Sıkışma / Uç Takılamaması",
-            "Anormal Ses / Salgı / Titreşim",
-            "Aşırı Isınma / Termal Sapma",
-            "Korozyon / Oksitlenme",
-            "Kablo / Bağlantı Temassızlığı",
-            "Elektriksel Kaçak / İzolasyon Hatası",
-            "Ani Durma / Fonksiyon Kaybı",
-            "Ölçü / Tolerans Uygunsuzluğu"
-        ]
+        fail_opts = ["Otomatik (Şikâyetten Algıla)"] + list(FAILURE_GROUPS) + list(ALL_SUBTYPES)
         fail_sel = c_m2.selectbox("Odak Hata Tipi:", fail_opts, key="qe_6m_fail")
 
         if st.button("🔍 Veritabanını Tara ve 6M Analizi Oluştur", type="primary", use_container_width=True, key="btn_run_6m"):
