@@ -200,21 +200,25 @@ def login():
     else:
         factory_url = "none"  # Görsel kopyalanmazsa mavi geçişli arka plan kullanılır.
 
-    user_svg = (
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
-        "viewBox='0 0 24 24' fill='none' stroke='%231a4071' stroke-width='1.8' "
-        "stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath "
-        "d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E"
-        "%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E"
-    )
-    lock_svg = (
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' "
-        "viewBox='0 0 24 24' fill='none' stroke='%231a4071' stroke-width='1.8' "
-        "stroke-linecap='round' stroke-linejoin='round'%3E"
-        "%3Crect x='5' y='10' width='14' height='11' rx='2'/%3E"
-        "%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3'/%3E"
-        "%3Ccircle cx='12' cy='15' r='1'/%3E%3C/svg%3E"
-    )
+    # SVG ikonlarını base64 CSS arka planına dönüştürüyoruz.
+    # Streamlit input içindeki ::before öğelerini göstermediğinden,
+    # ikonlar doğrudan gerçek <input> üzerine çiziliyor.
+    user_svg = "data:image/svg+xml;base64," + base64.b64encode(
+        ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' "
+         "fill='none' stroke='#1a4071' stroke-width='2' "
+         "stroke-linecap='round' stroke-linejoin='round'>"
+         "<circle cx='12' cy='7' r='4'/>"
+         "<path d='M4.5 21v-2a7.5 7.5 0 0 1 15 0v2'/>"
+         "</svg>").encode("utf-8")
+    ).decode("ascii")
+    lock_svg = "data:image/svg+xml;base64," + base64.b64encode(
+        ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' "
+         "fill='none' stroke='#1a4071' stroke-width='2' "
+         "stroke-linecap='round' stroke-linejoin='round'>"
+         "<rect x='5' y='10' width='14' height='11' rx='2'/>"
+         "<path d='M8 10V7a4 4 0 0 1 8 0v3'/>"
+         "</svg>").encode("utf-8")
+    ).decode("ascii")
 
     css = """
     <style>
@@ -228,21 +232,48 @@ def login():
           radial-gradient(circle at 0% 0%, #e9f5ff 0, transparent 40%),
           #edf3fa !important;
       }
-      [data-testid="stMainBlockContainer"],
-      [data-testid="stAppViewContainer"] .main .block-container {
-        max-width: 1480px !important;
-        padding: clamp(18px,4.3vh,50px) clamp(12px,3vw,48px) 28px !important;
+      /* GİRİŞ EKRANINI TAM EKRANA YAY: Streamlit'in varsayılan 1480px genişliği,
+         üst boşluğu ve yatay iç padding'i yalnızca giriş ekranında iptal edilir. */
+      html:has(.st-key-login_left), body:has(.st-key-login_left) {
+        margin:0 !important;
+        padding:0 !important;
+        overflow-x:hidden !important;
       }
-      div[data-testid="stHorizontalBlock"]:has(.st-key-login_left) {
+      [data-testid="stAppViewContainer"]:has(.st-key-login_left),
+      [data-testid="stAppViewContainer"]:has(.st-key-login_left) [data-testid="stMain"] {
+        width:100% !important;
+        margin:0 !important;
+        padding:0 !important;
+      }
+      [data-testid="stAppViewContainer"]:has(.st-key-login_left) [data-testid="stMainBlockContainer"],
+      [data-testid="stAppViewContainer"]:has(.st-key-login_left) .block-container {
+        max-width:none !important;
+        width:100% !important;
+        min-height:100vh !important;
+        min-height:100dvh !important;
+        margin:0 !important;
+        padding:0 !important;
+      }
+      [data-testid="stMainBlockContainer"]:has(.st-key-login_left) [data-testid="stVerticalBlock"]:has(.st-key-login_left) {
         gap:0 !important;
-        align-items:stretch !important;
-        filter:drop-shadow(0 18px 30px rgba(20,65,112,.13));
       }
-      div[data-testid="stHorizontalBlock"]:has(.st-key-login_left) > div[data-testid="column"] {
-        min-width:0;
+      [data-testid="stHorizontalBlock"]:has(.st-key-login_left) {
+        gap:0 !important;
+        column-gap:0 !important;
+        align-items:stretch !important;
+        width:100% !important;
+        margin:0 !important;
+        filter:none !important;
+      }
+      [data-testid="stHorizontalBlock"]:has(.st-key-login_left) > [data-testid="column"] {
+        min-width:0 !important;
+        padding:0 !important;
+        margin:0 !important;
       }
       .st-key-login_left, .st-key-login_right {
-        min-height:710px;
+        min-height:100vh !important;
+        min-height:100dvh !important;
+        width:100%;
         box-sizing:border-box;
         overflow:hidden;
         position:relative;
@@ -252,7 +283,7 @@ def login():
       .st-key-login_left {
         isolation:isolate;
         padding:44px clamp(28px,3.6vw,60px) 28px !important;
-        border-radius:23px 0 0 23px;
+        border-radius:0 !important;
         background:linear-gradient(142deg,#d4e4f5 0%,#0b5d9b 49%,#003c7b 100%);
       }
       .st-key-login_left::before {
@@ -279,7 +310,7 @@ def login():
         z-index:-1;
       }
       .st-key-login_left > div {height:100%;}
-      .k360-left-layout {display:flex;flex-direction:column;min-height:623px;height:100%;}
+      .k360-left-layout {display:flex;flex-direction:column;min-height:calc(100dvh - 72px);height:100%;}
       .k360-brand {display:flex;align-items:center;gap:16px;}
       .k360-mark {width:75px;height:75px;flex:0 0 75px;}
       .k360-brand-name {font-size:34px;line-height:1.05;letter-spacing:-1.2px;color:#0e2b55;font-weight:850;}
@@ -301,7 +332,7 @@ def login():
       .st-key-login_right {
         display:flex;align-items:center;justify-content:center;
         padding:40px clamp(18px,3vw,58px) !important;
-        border-radius:0 23px 23px 0;
+        border-radius:0 !important;
         background:linear-gradient(150deg,#e5efff 0%,#f5f9ff 47%,#e9f2ff 100%);
         isolation:isolate;
       }
@@ -320,6 +351,9 @@ def login():
       .st-key-login_right > div {width:100%;}
       .st-key-login_form_card {
         position:relative;
+        max-width:600px;
+        width:100%;
+        margin:0 auto;
         border:1px solid #d8e6fa;
         border-radius:20px;
         padding:35px clamp(20px,2.4vw,36px) 22px !important;
@@ -348,8 +382,33 @@ def login():
       }
       .st-key-login_form_card [data-testid="stTextInput"] input::placeholder {color:#7285a8 !important;opacity:1;}
       .st-key-login_form_card [data-testid="stTextInput"] input:focus {border-color:#138dd7 !important;box-shadow:0 0 0 3px rgba(26,140,222,.12) !important;}
-      .st-key-login_username input {background-image:url('__USER_SVG__') !important;background-repeat:no-repeat !important;background-position:15px center !important;background-size:19px 19px !important;}
-      .st-key-login_password input {background-image:url('__LOCK_SVG__') !important;background-repeat:no-repeat !important;background-position:15px center !important;background-size:19px 19px !important;}
+      /* İKON DÜZELTMESİ: Streamlit/BaseWeb içindeki input pseudo-elementi
+         görünmüyor. SVG'leri doğrudan input'un arka planına yerleştiriyoruz.
+         Böylece normal durumda, odakta ve hover sırasında görünüyorlar. */
+      .st-key-login_form_card [data-testid="stTextInput"] [data-baseweb="input"] {
+        position:relative !important;
+        background-color:#f8fbff !important;
+        border-radius:10px !important;
+      }
+      .st-key-login_form_card [data-testid="stTextInput"] input {
+        padding-left:54px !important;
+        background-repeat:no-repeat !important;
+        background-position:left 17px center !important;
+        background-size:21px 21px !important;
+      }
+      .st-key-login_form_card .st-key-login_username input,
+      .st-key-login_form_card input[aria-label="Kullanıcı Adı"],
+      .st-key-login_form_card input[placeholder="Kullanıcı Adı"] {
+        background-image:url("__USER_SVG__") !important;
+      }
+      .st-key-login_form_card .st-key-login_password input,
+      .st-key-login_form_card input[aria-label="Şifre"],
+      .st-key-login_form_card input[placeholder="Şifre"] {
+        background-image:url("__LOCK_SVG__") !important;
+      }
+      .st-key-login_form_card [data-testid="stTextInput"] input[type="password"] {
+        padding-right:8px !important;
+      }
       .st-key-login_form_card button[kind="primaryFormSubmit"] {
         width:100%;min-height:51px;margin-top:7px;border:0!important;
         border-radius:10px!important;
@@ -363,7 +422,7 @@ def login():
       .k360-security svg {width:17px;height:17px;flex:0 0 17px;fill:#3e97dd;}
       .st-key-login_form_card [data-testid="stAlert"] {border-radius:10px;margin-top:12px;}
       @media (max-width:1050px) {
-        .st-key-login_left,.st-key-login_right{min-height:665px;}
+        .st-key-login_left,.st-key-login_right{min-height:100dvh !important;}
         .st-key-login_left {padding:35px 26px 25px!important;}
         .st-key-login_right {padding:25px 20px!important;}
         .k360-brand-name{font-size:28px;}
@@ -373,9 +432,9 @@ def login():
         .k360-form-brand .k360-brand-name{font-size:28px;}
       }
       @media (max-width:700px) {
-        div[data-testid="stHorizontalBlock"]:has(.st-key-login_left){filter:none;}
-        .st-key-login_left,.st-key-login_right{min-height:auto;border-radius:19px;}
-        .st-key-login_left {padding:29px 23px!important;margin-bottom:14px;}
+        [data-testid="stHorizontalBlock"]:has(.st-key-login_left){filter:none;}
+        .st-key-login_left,.st-key-login_right{min-height:auto !important;height:auto !important;border-radius:0 !important;}
+        .st-key-login_left {padding:29px 23px!important;margin-bottom:0;}
         .st-key-login_right {padding:24px 15px!important;}
         .k360-left-layout{min-height:480px;}
         .k360-left-copy{padding-top:35px;}
