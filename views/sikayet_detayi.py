@@ -10,23 +10,16 @@ from utils import mark_email_complaint_viewed, email_complaint_states, analyze_w
 from services.ai_service import translate_and_cache_complaint
 from services.mail_service import load_local_env
 
-DEFAULT_MODEL_NUMBERS = "EM800, MR8-AF02"
+from model_registry import get_model_numbers, resolve_record_model
+
 
 def get_saved_models():
-    load_local_env()
-    raw = os.getenv("SAVED_FDA_MODEL_NUMBERS", DEFAULT_MODEL_NUMBERS)
-    models = [c.strip().upper() for c in raw.split(",") if c.strip()]
-    return models if models else ["EM800", "MR8-AF02"]
-
-
+    return get_model_numbers(include_inactive=True)
 
 
 def extract_model_code(product_str, findings_str, saved_models):
-    combined = f"{product_str or ''} {findings_str or ''}".upper()
-    for m in saved_models:
-        if m and m in combined: return m
-    m_paren = re.search(r'\(([^)]+)\)', str(product_str or "").upper())
-    return m_paren.group(1).strip() if m_paren else str(product_str or "").strip().upper()
+    return resolve_record_model({"product": product_str, "findings": findings_str}, saved_models)
+
 
 def map_engineering_action(row):
     sol = str(row.get("action_plan") or row.get("Üretilen Çözüm") or "").lower()

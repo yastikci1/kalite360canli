@@ -8,24 +8,15 @@ from services.fetch_fda import fetch_dynamic_fda
 from services.email_ingest import settings as imap_settings, save_settings as save_imap_settings, poll_inbox
 from services.mail_service import load_local_env
 
-DEFAULT_MODEL_NUMBERS = "EM800, MR8-AF02"
+from model_registry import get_model_numbers, add_model, set_model_numbers, remove_model
+
 
 def get_saved_model_numbers():
-    load_local_env()
-    raw = os.getenv("SAVED_FDA_MODEL_NUMBERS", DEFAULT_MODEL_NUMBERS)
-    return [c.strip().upper() for c in raw.split(",") if c.strip()]
+    return get_model_numbers()
+
 
 def add_model_to_saved_list(new_model: str):
-    m = new_model.strip().upper()
-    if not m:
-        return False
-    current = get_saved_model_numbers()
-    if m not in current:
-        current.append(m)
-        cleaned_str = ", ".join(current)
-        save_imap_settings({"SAVED_FDA_MODEL_NUMBERS": cleaned_str})
-        return True
-    return False
+    return add_model(new_model)
 
 def render(user):
     st.subheader("Excel'den şikâyet aktarımı")
@@ -65,7 +56,8 @@ def render(user):
     
     with st.container(border=True):
         st.markdown("##### ⚡ Kayıtlı Model Numaralarını (Model Number) Yönet ve Toplu Güncelle")
-        st.caption(f"Takip edilen sabit Model Numaraları: **{', '.join(saved_models) if saved_models else 'Tanımlı model yok'}**")
+        st.caption(f"Otomatik tanınan / takip edilen modeller: **{', '.join(saved_models) if saved_models else 'Henüz tanımlı model yok'}**")
+        st.caption("Yeni şikâyetlerin Ürün alanındaki model kodları otomatik keşfedilir. Manuel eklemeler SQLite model_registry tablosunda saklanır; .env kullanılmaz.")
         
         q_col1, q_col2 = st.columns([2, 1])
         with q_col1:
@@ -84,36 +76,29 @@ def render(user):
             st.markdown("**1. Yeni Model Numarası Ekle veya Listeyi Düzenle:**")
             new_models_str = st.text_input("Model Numaraları Listesi (Virgülle ayırın)", value=", ".join(saved_models), key="input_saved_models")
             if st.button("Listeyi Kaydet", key="btn_save_models"):
-                cleaned_str = ", ".join([c.strip().upper() for c in new_models_str.split(",") if c.strip()])
-                save_imap_settings({"SAVED_FDA_MODEL_NUMBERS": cleaned_str})
-                st.success(f"Model numaraları listesi güncellendi: {cleaned_str}")
-                st.rerun()
+                try:
+                    updated = set_model_numbers(new_models_str.split(","))
+                    st.success(f"Model listesi veritabanina kaydedildi: {', '.join(updated)}")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
                 
             st.divider()
             st.markdown("**2. Bir Model Numarasını Tamamen Kaldır:**")
             if saved_models:
                 selected_to_remove = st.selectbox("Kaldırılacak Model Numarasını Seçin", saved_models, key="select_model_remove")
-                remove_existing_data = st.checkbox("Bu model numarasına ait veritabanındaki mevcut şikâyet kayıtlarını da sil", value=True)
-                
+                remove_existing_data = st.checkbox(
+                    "Bu modele ait şikâyet kayıtlarını da kalıcı olarak sil (geri alınamaz)",
+                    value=False,
+                )
+
                 if st.button("Seçilen Model Numarasını Listeden Sil", type="secondary"):
-                    updated_list = [c for c in saved_models if c != selected_to_remove]
-                    cleaned_str = ", ".join(updated_list)
-                    save_imap_settings({"SAVED_FDA_MODEL_NUMBERS": cleaned_str})
-                    
-                    deleted_count = 0
-                    if remove_existing_data:
-                        with db() as conn:
-                            cur = conn.cursor()
-                            cur.execute(
-                                "DELETE FROM complaints WHERE UPPER(product) LIKE ? OR UPPER(description) LIKE ? OR UPPER(findings) LIKE ?",
-                                (f"%{selected_to_remove.upper()}%", f"%{selected_to_remove.upper()}%", f"%{selected_to_remove.upper()}%")
-                            )
-                            deleted_count = cur.rowcount
-                            conn.commit()
-                            
+                    # Varsayilan yalnizca model listesinden gizler; veriler korunur.
+                    deleted_count = remove_model(selected_to_remove, delete_complaints=remove_existing_data)
                     st.session_state["fda_sync_msg"] = (
                         "success",
-                        f"'{selected_to_remove}' model numarası listeden kaldırıldı! " + (f"Ayrıca veritabanından {deleted_count} adet ilgili şikâyet kaydı silindi." if remove_existing_data else "")
+                        f"'{selected_to_remove}' takip listesinden kaldirildi. "
+                        + (f"Ayrıca {deleted_count} ilgili şikâyet kaydı silindi." if remove_existing_data else "Şikâyet kayıtları korundu."),
                     )
                     st.rerun()
             else:
