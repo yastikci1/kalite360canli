@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="1100" viewBox="0 0 1300 1100">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0.85" y1="0" y2="1">
+      <stop offset="0" stop-color="#d1e0eb"/><stop offset="0.47" stop-color="#7794aa"/><stop offset="1" stop-color="#285a84"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" x2="0.9" y1="0.5" y2="1">
+      <stop offset="0" stop-color="#7d9ba9"/><stop offset="0.5" stop-color="#426883"/><stop offset="1" stop-color="#153d63"/>
+    </linearGradient>
+    <linearGradient id="machine" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#a7c2ce"/><stop offset="0.5" stop-color="#567e9b"/><stop offset="1" stop-color="#254f73"/>
+    </linearGradient>
+    <radialGradient id="glow"><stop stop-color="#ffffff" stop-opacity="0.72"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <filter id="soft"><feGaussianBlur stdDeviation="5"/></filter>
+    <filter id="industrial"><feGaussianBlur stdDeviation="2"/></filter>
+  </defs>
+  <rect width="1300" height="1100" fill="url(#sky)"/>
+  <path d="M0 150L600 260L1300 130L1300 0L0 0Z" fill="#dbe8f2" opacity=".46"/>
+  <g stroke="#1c5177" stroke-width="18" opacity=".68">
+    <path d="M-20 85L700 275L1300 125" fill="none"/>
+    <path d="M-20 200L700 310L1300 235" fill="none"/>
+    <path d="M200 0L480 435M530 0L630 435M960 0L825 435M1230 0L905 435"/>
+  </g>
+  <g stroke="#d8e9f3" stroke-width="8" opacity=".72">
+    <path d="M-20 96L700 283L1300 139" fill="none"/>
+    <path d="M50 70L60 485M1185 190L1175 495M925 225L916 480"/>
+  </g>
+  <polygon points="0,490 1300,418 1300,1100 0,1100" fill="url(#floor)"/>
+  <path d="M0 550L1300 470" stroke="#c4d3de" opacity=".46" stroke-width="12"/>
+  <g opacity=".67">
+    <polygon points="0,338 270,348 270,615 0,685" fill="#b6cad4"/>
+    <polygon points="25,363 115,364 115,636 25,650" fill="#416c89"/>
+    <polygon points="138,362 249,364 249,617 138,635" fill="#5d849f"/>
+    <path d="M120 358V638M25 479H255" stroke="#ddeaf0" stroke-width="15"/>
+    <polygon points="975,300 1300,295 1300,705 960,620" fill="#aac3d2" opacity=".75"/>
+    <g stroke="#517c9b" stroke-width="13"><path d="M1025 311V640M1125 305V672M1215 302V690M973 418H1300"/></g>
+  </g>
+  <g filter="url(#industrial)">
+    <path d="M72 550L330 500L505 510L500 760L60 860Z" fill="url(#machine)"/>
+    <path d="M100 555L300 524L318 625L91 690Z" fill="#b2d2de" opacity=".65"/>
+    <path d="M305 525L495 535L495 654L315 626Z" fill="#2d6084"/>
+    <path d="M465 544V730M395 542V748M120 700L505 640" stroke="#173a5c" stroke-width="15"/>
+    <rect x="370" y="390" width="80" height="145" rx="8" fill="#a3bfcd"/>
+    <rect x="388" y="420" width="42" height="55" fill="#245273"/>
+    <rect x="650" y="490" width="190" height="270" rx="14" fill="url(#machine)"/>
+    <path d="M680 505H808V635H680Z" fill="#97b8c9"/><path d="M650 677H840" stroke="#2e5671" stroke-width="28"/>
+    <path d="M870 520L1210 482L1250 700L900 755Z" fill="#3d6987"/>
+    <path d="M930 533L1175 514L1195 621L932 661Z" fill="#b5cad4" opacity=".58"/>
+    <path d="M905 690L1250 632" stroke="#183c60" stroke-width="22"/>
+    <circle cx="560" cy="654" r="65" fill="#345e79"/><circle cx="560" cy="654" r="30" fill="#a4c1cd"/>
+    <path d="M300 840H990" stroke="#bed0da" stroke-width="14"/>
+  </g>
+  <g opacity=".48" fill="none" stroke="#d5e3ee">
+    <path d="M-50 1090L490 450M300 1100L620 444M940 1100L770 443M1300 1100L835 450" stroke-width="6"/>
+    <path d="M0 875L1300 768M0 1010L1300 900" stroke-width="6"/>
+  </g>
+  <g opacity=".55"><ellipse cx="575" cy="300" rx="245" ry="170" fill="url(#glow)"/><ellipse cx="1100" cy="265" rx="170" ry="120" fill="url(#glow)"/></g>
+  <rect width="1300" height="1100" fill="#0b5596" opacity=".34"/>
+  <rect width="1300" height="1100" fill="#06376c" opacity=".18"/>
+</svg>
